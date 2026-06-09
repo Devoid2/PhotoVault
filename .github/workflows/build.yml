@@ -2,8 +2,8 @@ name: Build & Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -47,6 +47,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
 
@@ -56,9 +57,6 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-
-      - name: List artifacts
-        run: find artifacts -type f | head -20
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
