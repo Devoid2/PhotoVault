@@ -101,7 +101,7 @@ async function readExifData(filePath) {
   try {
     const data = await lib.parse(filePath, {
       pick: [
-        'Make', 'Model', 'LensModel', 'LensMake',
+        'Make', 'Model', 'LensModel', 'LensMake', 'Lens', 'LensInfo', 'LensID',
         'DateTimeOriginal', 'CreateDate',
         'ISO', 'FNumber', 'ExposureTime',
         'FocalLength', 'FocalLengthIn35mmFormat',
@@ -122,14 +122,15 @@ async function readDateTaken(filePath) {
   const lib = await getExifr();
   try {
     const data = await lib.parse(filePath, {
-      pick: ['DateTimeOriginal', 'CreateDate', 'Make', 'Model', 'LensModel'],
+      pick: ['DateTimeOriginal', 'CreateDate', 'Make', 'Model', 'LensModel', 'Lens', 'LensInfo'],
     });
     if (!data) return null;
     const date = data.DateTimeOriginal || data.CreateDate || null;
+    const lens = data.LensModel || data.Lens || null;
     return {
       dateTaken: date ? new Date(date).toISOString() : null,
       camera:    [data.Make, data.Model].filter(Boolean).join(' ') || null,
-      lens:      data.LensModel || null,
+      lens:      lens,
     };
   } catch {
     return null;
