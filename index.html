@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhotoVault</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ═══════════ TITLE BAR ═══════════ -->
+  <header id="titlebar">
+    <div class="titlebar-drag"></div>
+    <span class="titlebar-title">PhotoVault</span>
+  </header>
+
+  <!-- ═══════════ MAIN LAYOUT ═══════════ -->
+  <div id="app">
+
+    <!-- ──── LEFT SIDEBAR ──── -->
+    <aside id="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-header">
+          <span class="sidebar-label">LIBRARY</span>
+        </div>
+
+        <button id="btn-add-folder" class="sidebar-btn" title="Add folder">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M1.5 3.5C1.5 2.94772 1.94772 2.5 2.5 2.5H5.5L7 4H11.5C12.0523 4 12.5 4.44772 12.5 5V10.5C12.5 11.0523 12.0523 11.5 11.5 11.5H2.5C1.94772 11.5 1.5 11.0523 1.5 10.5V3.5Z" stroke="currentColor" stroke-width="1"/>
+          </svg>
+          <span>Add Folder</span>
+        </button>
+
+        <button id="btn-add-photos" class="sidebar-btn" title="Add individual photos">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="1.5" y="2.5" width="11" height="9" rx="1" stroke="currentColor" stroke-width="1"/>
+            <circle cx="5" cy="5.5" r="1.2" stroke="currentColor" stroke-width="0.9"/>
+            <path d="M1.5 9.5L4.5 7L6.5 8.5L9 6L12.5 9.5" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Add Photos</span>
+        </button>
+
+        <ul id="folder-list" class="folder-list"></ul>
+      </div>
+
+      <!-- Empty state -->
+      <div id="sidebar-empty" class="sidebar-empty">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" opacity="0.2">
+          <path d="M4 10C4 8.89543 4.89543 8 6 8H16L19 12H34C35.1046 12 36 12.8954 36 14V30C36 31.1046 35.1046 32 34 32H6C4.89543 32 4 31.1046 4 30V10Z" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        <p>No folders added yet</p>
+        <p class="sidebar-empty-hint">Click "Add Folder" to start building your library</p>
+      </div>
+
+      <!-- Collections -->
+      <div class="sidebar-section sidebar-section-collections">
+        <div class="sidebar-header">
+          <span class="sidebar-label">COLLECTIONS</span>
+          <button id="btn-new-collection" class="sidebar-icon-btn" title="New collection">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <ul id="collection-list" class="folder-list"></ul>
+        <div id="new-collection-input" class="new-collection-input" style="display:none">
+          <input type="text" id="collection-name-input" placeholder="Collection name…" maxlength="60">
+        </div>
+      </div>
+    </aside>
+
+    <!-- ──── MAIN CONTENT ──── -->
+    <main id="content">
+
+      <!-- Tab bar -->
+      <div id="tab-bar">
+        <button class="tab active" data-tab="folders">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 4C2 3.44772 2.44772 3 3 3H6.5L8 5H13C13.5523 5 14 5.44772 14 6V12C14 12.5523 13.5523 13 13 13H3C2.44772 13 2 12.5523 2 12V4Z" stroke="currentColor" stroke-width="1.2"/>
+          </svg>
+          Folders
+        </button>
+        <button class="tab" data-tab="date">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="3" width="12" height="11" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M2 6.5H14" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M5 1.5V4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <path d="M11 1.5V4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          By Date
+        </button>
+
+        <!-- Photo count -->
+        <span id="photo-count" class="photo-count"></span>
+      </div>
+
+      <!-- Grid area -->
+      <div id="grid-container">
+
+        <!-- Welcome state (no folder selected) -->
+        <div id="welcome-state" class="empty-state">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" opacity="0.15">
+            <rect x="6" y="14" width="52" height="38" rx="3" stroke="currentColor" stroke-width="2"/>
+            <circle cx="22" cy="28" r="5" stroke="currentColor" stroke-width="2"/>
+            <path d="M6 42L20 32L30 40L42 28L58 42" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p class="empty-title">Welcome to PhotoVault</p>
+          <p class="empty-hint">Select a folder from the sidebar or add a new one to browse your photos</p>
+        </div>
+
+        <!-- Loading state -->
+        <div id="loading-state" class="empty-state" style="display:none">
+          <div class="spinner"></div>
+          <p class="empty-hint">Scanning photos…</p>
+        </div>
+
+        <!-- Photo grid -->
+        <div id="photo-grid" class="photo-grid" style="display:none"></div>
+      </div>
+    </main>
+
+    <!-- ──── RIGHT METADATA PANEL ──── -->
+    <aside id="meta-panel" class="meta-panel">
+      <div class="meta-panel-inner">
+        <button id="btn-close-meta" class="meta-close" title="Close">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <!-- Preview -->
+        <div id="meta-preview" class="meta-preview"></div>
+
+        <!-- Filename -->
+        <h3 id="meta-filename" class="meta-filename"></h3>
+
+        <!-- Camera section -->
+        <div class="meta-section">
+          <div class="meta-section-title">CAMERA</div>
+          <div class="meta-grid">
+            <div class="meta-row">
+              <span class="meta-label">Body</span>
+              <span id="meta-camera" class="meta-value">—</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Lens</span>
+              <span id="meta-lens" class="meta-value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings section -->
+        <div class="meta-section">
+          <div class="meta-section-title">SETTINGS</div>
+          <div class="meta-grid">
+            <div class="meta-row">
+              <span class="meta-label">ISO</span>
+              <span id="meta-iso" class="meta-value">—</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Aperture</span>
+              <span id="meta-aperture" class="meta-value">—</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Shutter</span>
+              <span id="meta-shutter" class="meta-value">—</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Focal Length</span>
+              <span id="meta-focal" class="meta-value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Date section -->
+        <div class="meta-section">
+          <div class="meta-section-title">DATE</div>
+          <div class="meta-grid">
+            <div class="meta-row">
+              <span class="meta-label">Taken</span>
+              <span id="meta-date" class="meta-value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Collections section -->
+        <div class="meta-section" id="meta-collections-section">
+          <div class="meta-section-title">COLLECTIONS</div>
+          <div id="meta-collections-list" class="meta-collections-list"></div>
+          <button id="meta-add-to-collection" class="meta-add-collection-btn">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+            Add to Collection
+          </button>
+          <div id="collection-dropdown" class="collection-dropdown" style="display:none">
+            <ul id="collection-dropdown-list"></ul>
+            <div class="collection-dropdown-divider"></div>
+            <button id="collection-dropdown-new" class="collection-dropdown-item new">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+              New Collection…
+            </button>
+          </div>
+        </div>
+
+        <!-- File section -->
+        <div class="meta-section">
+          <div class="meta-section-title">FILE</div>
+          <div class="meta-grid">
+            <div class="meta-row">
+              <span class="meta-label">Size</span>
+              <span id="meta-filesize" class="meta-value">—</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Dimensions</span>
+              <span id="meta-dimensions" class="meta-value">—</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Format</span>
+              <span id="meta-format" class="meta-value">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ═══════════ CONTEXT MENU ═══════════ -->
+  <div id="context-menu" class="context-menu" style="display:none">
+    <div class="context-menu-heading">Add to Collection</div>
+    <ul id="context-menu-list"></ul>
+    <div class="context-menu-divider"></div>
+    <button id="context-menu-new" class="context-menu-item">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      New Collection…
+    </button>
+  </div>
+
+  <!-- ═══════════ FULLSCREEN VIEWER ═══════════ -->
+  <div id="fullscreen-overlay" class="fullscreen-overlay">
+    <button id="fs-close" class="fs-btn fs-close" title="Close (Esc)">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M4 4l12 12M16 4L4 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button id="fs-prev" class="fs-btn fs-nav fs-prev" title="Previous (←)">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M12 4L6 10L12 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button id="fs-next" class="fs-btn fs-nav fs-next" title="Next (→)">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M8 4L14 10L8 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div id="fs-image-container" class="fs-image-container">
+      <img id="fs-image" class="fs-image" alt="">
+    </div>
+    <div id="fs-info" class="fs-info">
+      <span id="fs-filename"></span>
+      <span id="fs-counter"></span>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
