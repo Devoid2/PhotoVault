@@ -574,7 +574,7 @@ async function selectPhoto(photo, index) {
 
     const camera = [exif?.Make, exif?.Model].filter(Boolean).join(' ');
     $('#meta-camera').textContent  = cleanCameraName(camera) || '—';
-    $('#meta-lens').textContent    = exif?.LensModel || '—';
+    $('#meta-lens').textContent    = cleanLensName(exif) || '—';
     $('#meta-iso').textContent     = exif?.ISO || '—';
     $('#meta-aperture').textContent = exif?.FNumber ? `f/${exif.FNumber}` : '—';
     $('#meta-shutter').textContent  = formatShutter(exif?.ExposureTime);
@@ -902,4 +902,57 @@ function cleanCameraName(name) {
     return parts.slice(1).join(' ');
   }
   return name;
+}
+
+/** Extract best lens name from EXIF, sanitize junk values */
+function cleanLensName(exif) {
+  if (!exif) return '';
+
+  // Try fields in priority order
+  let raw = exif.LensModel || exif.Lens || null;
+
+  // LensInfo is often an array like [24, 70, 2.8, 2.8]
+  if (!raw && exif.LensInfo) {
+    const info = exif.LensInfo;
+    if (Array.isArray(info) && info.length >= 2) {
+      const fMin = info[0], fMax = info[1];
+      const aMin = info[2], aMax = info[3];
+      let s = '';
+      if (fMin === fMax) s = `${fMin}mm`;
+      else s = `${fMin}-${fMax}mm`;
+      if (aMin && aMax) {
+        s += aMin === aMax ? ` f/${aMin}` : ` f/${aMin}-${aMax}`;
+      }
+      return s;
+    }
+    if (typeof info === 'string') raw = info;
+  }
+
+  // LensID can be a number or string
+  if (!raw && exif.LensID) {
+    const lid = exif.LensID;
+    if (typeof lid === 'string' && lid.length > 3 && !/^\d+$/.test(lid)) {
+      raw = lid;
+    }
+  }
+
+  if (!raw) return '';
+  if (typeof raw !== 'string') return '';
+
+  // Strip non-printable / control characters
+  let cleaned = raw.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
+
+  // Reject values that are clearly junk (all zeros, single chars, numeric IDs)
+  if (!cleaned) return '';
+  if (/^[0\s]+$/.test(cleaned)) return '';
+  if (/^\d+$/.test(cleaned)) return '';
+  if (cleaned.length < 3) return '';
+
+  // Remove duplicate manufacturer prefix (e.g. "Canon Canon EF 50mm...")
+  const words = cleaned.split(/\s+/);
+  if (words.length > 1 && words[0].toLowerCase() === words[1].toLowerCase()) {
+    cleaned = words.slice(1).join(' ');
+  }
+
+  return cleaned;
 }

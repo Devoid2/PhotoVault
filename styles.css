@@ -720,12 +720,16 @@ html, body {
   min-width: 0;
   overflow: hidden;
   background: var(--bg-sidebar);
-  border-left: 1px solid var(--border);
-  transition: width 0.25s ease, min-width 0.25s ease;
+  border-left: 1px solid transparent;
+  transition:
+    width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s ease;
 }
 .meta-panel.open {
   width: var(--meta-width);
   min-width: var(--meta-width);
+  border-left-color: var(--border);
 }
 
 .meta-panel-inner {
@@ -734,6 +738,15 @@ html, body {
   overflow-y: auto;
   height: 100%;
   position: relative;
+  opacity: 0;
+  transform: translateX(20px);
+  transition:
+    opacity 0.3s ease 0.1s,
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) 0.1s;
+}
+.meta-panel.open .meta-panel-inner {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .meta-close {
