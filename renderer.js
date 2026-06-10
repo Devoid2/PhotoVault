@@ -111,7 +111,65 @@ const dom = {
   } else if (state.standalonePhotos.length > 0) {
     selectFolder('__standalone__');
   }
+
+  // ── Auto-update UI ────────────────────────────────────
+  setupUpdateBar();
 })();
+
+/* ═══════════════════════════════════════════════════════
+   AUTO-UPDATE UI
+   ═══════════════════════════════════════════════════════ */
+
+function setupUpdateBar() {
+  const bar       = $('#update-bar');
+  const text      = $('#update-text');
+  const actionBtn = $('#update-action');
+  const dismiss   = $('#update-dismiss');
+  const progWrap  = $('#update-progress-wrap');
+  const progFill  = $('#update-progress-fill');
+  const progPct   = $('#update-percent');
+
+  let updateState = 'idle'; // idle | available | downloading | ready
+
+  api.onUpdateAvailable((info) => {
+    updateState = 'available';
+    text.textContent = `Version ${info.version} is available`;
+    actionBtn.textContent = 'Download';
+    progWrap.style.display = 'none';
+    bar.style.display = 'block';
+  });
+
+  api.onUpdateProgress((info) => {
+    updateState = 'downloading';
+    text.textContent = 'Downloading update…';
+    actionBtn.style.display = 'none';
+    progWrap.style.display = 'flex';
+    progFill.style.width = info.percent + '%';
+    progPct.textContent = info.percent + '%';
+  });
+
+  api.onUpdateDownloaded(() => {
+    updateState = 'ready';
+    text.textContent = 'Update ready — restart to apply';
+    progWrap.style.display = 'none';
+    actionBtn.style.display = '';
+    actionBtn.textContent = 'Restart';
+  });
+
+  actionBtn.addEventListener('click', () => {
+    if (updateState === 'available') {
+      api.downloadUpdate();
+      text.textContent = 'Starting download…';
+      actionBtn.style.display = 'none';
+    } else if (updateState === 'ready') {
+      api.installUpdate();
+    }
+  });
+
+  dismiss.addEventListener('click', () => {
+    bar.style.display = 'none';
+  });
+}
 
 /* ═══════════════════════════════════════════════════════
    FOLDER MANAGEMENT

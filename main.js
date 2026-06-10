@@ -507,6 +507,17 @@ function registerIpcHandlers() {
   ipcMain.on('window:close', (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close();
   });
+
+  /* ── Auto-update controls ──────────────────────────── */
+  ipcMain.handle('update:download', () => {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.downloadUpdate();
+  });
+
+  ipcMain.handle('update:install', () => {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.quitAndInstall(false, true);
+  });
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -531,6 +542,48 @@ function createWindow() {
   });
 
   win.loadFile('index.html');
+  return win;
+}
+
+/* ═══════════════════════════════════════════════════════
+   AUTO-UPDATER
+   ═══════════════════════════════════════════════════════ */
+
+function setupAutoUpdater(win) {
+  try {
+    const { autoUpdater } = require('electron-updater');
+
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', (info) => {
+      win.webContents.send('update:available', {
+        version: info.version,
+        releaseDate: info.releaseDate,
+      });
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+      win.webContents.send('update:progress', {
+        percent: Math.round(progress.percent),
+      });
+    });
+
+    autoUpdater.on('update-downloaded', () => {
+      win.webContents.send('update:downloaded');
+    });
+
+    autoUpdater.on('error', (err) => {
+      console.error('Auto-updater error:', err.message);
+    });
+
+    // Check for updates after a short delay
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, 5000);
+  } catch (err) {
+    console.error('Auto-updater setup failed:', err.message);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -541,10 +594,14 @@ app.whenReady().then(() => {
   initPaths();
   loadStore();
   registerIpcHandlers();
-  createWindow();
+  const win = createWindow();
+  setupAutoUpdater(win);
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const w = createWindow();
+      setupAutoUpdater(w);
+    }
   });
 });
 

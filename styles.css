@@ -109,6 +109,106 @@ html, body {
 }
 
 /* ═══════════════════════════════════════════════════════
+   UPDATE BAR
+   ═══════════════════════════════════════════════════════ */
+
+.update-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  transform: translateY(100%);
+  animation: slideUp 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideUp {
+  to { transform: translateY(0); }
+}
+
+.update-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  border-top: 1px solid rgba(100, 120, 200, 0.2);
+}
+
+.update-icon {
+  color: #6c8cff;
+  flex-shrink: 0;
+}
+
+.update-text {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.update-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 200px;
+}
+
+.update-progress-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: #6c8cff;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.update-percent {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+}
+
+.update-action-btn {
+  padding: 4px 14px;
+  background: #6c8cff;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-family: var(--font-family);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.update-action-btn:hover {
+  background: #7d9aff;
+}
+
+.update-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: all var(--transition);
+}
+.update-dismiss:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════
    APP LAYOUT
    ═══════════════════════════════════════════════════════ */
 

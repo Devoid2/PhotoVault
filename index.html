@@ -17,6 +17,29 @@
     <span class="titlebar-title">PhotoVault</span>
   </header>
 
+  <!-- ═══════════ UPDATE BAR ═══════════ -->
+  <div id="update-bar" class="update-bar" style="display:none">
+    <div class="update-bar-inner">
+      <svg class="update-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1v8M4 6l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 10v2h10v-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span id="update-text" class="update-text">A new version is available</span>
+      <div id="update-progress-wrap" class="update-progress-wrap" style="display:none">
+        <div class="update-progress-track">
+          <div id="update-progress-fill" class="update-progress-fill" style="width:0%"></div>
+        </div>
+        <span id="update-percent" class="update-percent">0%</span>
+      </div>
+      <button id="update-action" class="update-action-btn">Download</button>
+      <button id="update-dismiss" class="update-dismiss" title="Dismiss">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
   <!-- ═══════════ MAIN LAYOUT ═══════════ -->
   <div id="app">
 

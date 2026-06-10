@@ -1,6 +1,6 @@
 {
   "name": "photovault",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Minimalist desktop photo storage and organization",
   "main": "main.js",
   "author": "Devoid2",
@@ -16,6 +16,7 @@
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "exifr": "^7.1.3",
     "sharp": "^0.33.5"
   },
@@ -56,6 +57,11 @@
       "allowToChangeInstallationDirectory": true,
       "installerIcon": null,
       "uninstallerIcon": null
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Devoid2",
+      "repo": "PhotoVault"
     }
   }
 }
