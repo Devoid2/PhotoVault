@@ -241,6 +241,32 @@
       </svg>
       New Collection…
     </button>
+    <div class="context-menu-divider"></div>
+    <button id="context-menu-remove" class="context-menu-item context-menu-danger">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+      Remove from Library
+    </button>
+  </div>
+
+  <!-- ═══════════ CONFIRM DIALOG ═══════════ -->
+  <div id="confirm-overlay" class="confirm-overlay" style="display:none">
+    <div class="confirm-dialog">
+      <div class="confirm-icon">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+          <circle cx="14" cy="14" r="12" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M14 8v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="14" cy="20" r="1" fill="currentColor"/>
+        </svg>
+      </div>
+      <h3 id="confirm-title" class="confirm-title">Remove photo?</h3>
+      <p id="confirm-message" class="confirm-message">This will remove the photo from this collection. The file will not be deleted.</p>
+      <div class="confirm-actions">
+        <button id="confirm-cancel" class="confirm-btn confirm-btn-cancel">Cancel</button>
+        <button id="confirm-ok" class="confirm-btn confirm-btn-danger">Remove</button>
+      </div>
+    </div>
   </div>
 
   <!-- ═══════════ FULLSCREEN VIEWER ═══════════ -->

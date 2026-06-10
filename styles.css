@@ -508,6 +508,106 @@ html, body {
   outline-offset: -1px;
 }
 
+/* ── Context menu danger item ── */
+.context-menu-danger {
+  color: #b55;
+}
+.context-menu-danger:hover {
+  background: rgba(180, 60, 60, 0.15) !important;
+  color: #e66 !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONFIRM DIALOG
+   ═══════════════════════════════════════════════════════ */
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.confirm-overlay.visible {
+  opacity: 1;
+}
+
+.confirm-dialog {
+  background: #1a1a1a;
+  border: 1px solid var(--border-hover);
+  border-radius: 12px;
+  padding: 28px 32px 24px;
+  min-width: 320px;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  transform: scale(0.95) translateY(8px);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.confirm-overlay.visible .confirm-dialog {
+  transform: scale(1) translateY(0);
+}
+
+.confirm-icon {
+  color: #b55;
+  margin-bottom: 14px;
+}
+
+.confirm-title {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.confirm-message {
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  margin-bottom: 22px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.confirm-btn {
+  padding: 8px 20px;
+  border-radius: var(--radius);
+  font-family: var(--font-family);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  border: 1px solid var(--border-hover);
+}
+
+.confirm-btn-cancel {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.confirm-btn-cancel:hover {
+  background: var(--highlight);
+  color: var(--text-primary);
+}
+
+.confirm-btn-danger {
+  background: #8b2020;
+  border-color: #a03030;
+  color: #fff;
+}
+.confirm-btn-danger:hover {
+  background: #a52a2a;
+  border-color: #c04040;
+}
+
 /* ═══════════════════════════════════════════════════════
    MAIN CONTENT
    ═══════════════════════════════════════════════════════ */

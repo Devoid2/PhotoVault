@@ -76,8 +76,13 @@ const dom = {
   $('#meta-add-to-collection').addEventListener('click', toggleCollectionDropdown);
   $('#collection-dropdown-new').addEventListener('click', handleDropdownNewCollection);
 
-  // Context menu: "New Collection" button
+  // Context menu buttons
   $('#context-menu-new').addEventListener('click', handleContextMenuNewCollection);
+  $('#context-menu-remove').addEventListener('click', handleContextMenuRemove);
+
+  // Confirm dialog buttons
+  $('#confirm-cancel').addEventListener('click', () => hideConfirm(false));
+  $('#confirm-ok').addEventListener('click', () => hideConfirm(true));
 
   // Close dropdown & context menu on outside click
   document.addEventListener('click', (e) => {
@@ -426,8 +431,13 @@ function renderDateGroupedGrid(photos) {
     }
   });
 
-  // Sort keys descending (newest first)
+  // Sort keys descending (newest month first)
   const sortedKeys = Object.keys(groups).sort().reverse();
+
+  // Sort photos within each group by date descending (newest day first)
+  for (const key of sortedKeys) {
+    groups[key].sort((a, b) => new Date(b.dateTaken) - new Date(a.dateTaken));
+  }
 
   // Flat list for fullscreen navigation
   const flatList = [];
@@ -844,6 +854,17 @@ async function showContextMenu(x, y, photo) {
   const maxY = window.innerHeight - rect.height - 8;
   cm.style.left = Math.min(x, maxX) + 'px';
   cm.style.top  = Math.min(y, maxY) + 'px';
+
+  // Update remove button label based on context
+  const removeBtn = $('#context-menu-remove');
+  if (state.currentFolder && state.currentFolder.startsWith('__collection__:')) {
+    const colId = state.currentFolder.replace('__collection__:', '');
+    const col = state.collections.find(c => c.id === colId);
+    removeBtn.childNodes[removeBtn.childNodes.length - 1].textContent =
+      ` Remove from "${col?.name || 'collection'}"`;
+  } else {
+    removeBtn.childNodes[removeBtn.childNodes.length - 1].textContent = ' Remove from Library';
+  }
 }
 
 async function handleContextMenuNewCollection() {
@@ -865,6 +886,104 @@ async function handleContextMenuNewCollection() {
   }
 
   renderCollectionList();
+}
+
+/* ═══════════════════════════════════════════════════════
+   REMOVE FROM LIBRARY (context menu)
+   ═══════════════════════════════════════════════════════ */
+
+async function handleContextMenuRemove() {
+  const cm = $('#context-menu');
+  cm.style.display = 'none';
+
+  if (!_contextMenuPhoto) return;
+  const photo = _contextMenuPhoto;
+
+  // If viewing a collection, offer to remove from that collection
+  const isCollection = state.currentFolder && state.currentFolder.startsWith('__collection__:');
+  const collectionId = isCollection ? state.currentFolder.replace('__collection__:', '') : null;
+  const collectionName = isCollection
+    ? state.collections.find(c => c.id === collectionId)?.name || 'this collection'
+    : null;
+
+  let title, message, btnText;
+  if (isCollection) {
+    title = 'Remove from collection?';
+    message = `"${photo.name}" will be removed from "${collectionName}". The file will not be deleted.`;
+    btnText = 'Remove';
+  } else {
+    title = 'Remove from library?';
+    message = `"${photo.name}" will be removed from your PhotoVault library. The file on disk will not be deleted.`;
+    btnText = 'Remove';
+  }
+
+  const confirmed = await showConfirm(title, message, btnText);
+  if (!confirmed) return;
+
+  if (isCollection) {
+    await api.removePhotoFromCollection(collectionId, photo.path);
+    const col = state.collections.find(c => c.id === collectionId);
+    if (col) col.count = Math.max(0, col.count - 1);
+    renderCollectionList();
+  } else {
+    // Remove from standalone files if it's there
+    await api.removeFile(photo.path);
+
+    // Remove from ALL collections too
+    for (const col of state.collections) {
+      await api.removePhotoFromCollection(col.id, photo.path);
+    }
+    // Refresh collection counts
+    const freshCols = await api.getCollections();
+    state.collections = freshCols;
+    renderCollectionList();
+  }
+
+  // Close meta panel if this photo was selected
+  if (state.selectedPhoto && state.selectedPhoto.path === photo.path) {
+    closeMetaPanel();
+  }
+
+  // Refresh current view
+  if (state.currentTab === 'date') {
+    switchTab('date');
+  } else if (isCollection) {
+    selectFolder(state.currentFolder);
+  } else if (state.currentFolder) {
+    selectFolder(state.currentFolder);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CUSTOM CONFIRM DIALOG
+   ═══════════════════════════════════════════════════════ */
+
+let _confirmResolve = null;
+
+function showConfirm(title, message, okText = 'Remove') {
+  return new Promise(resolve => {
+    _confirmResolve = resolve;
+    $('#confirm-title').textContent = title;
+    $('#confirm-message').textContent = message;
+    $('#confirm-ok').textContent = okText;
+    const overlay = $('#confirm-overlay');
+    overlay.style.display = 'flex';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => overlay.classList.add('visible'));
+    });
+  });
+}
+
+function hideConfirm(result) {
+  const overlay = $('#confirm-overlay');
+  overlay.classList.remove('visible');
+  setTimeout(() => {
+    overlay.style.display = 'none';
+  }, 200);
+  if (_confirmResolve) {
+    _confirmResolve(result);
+    _confirmResolve = null;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
