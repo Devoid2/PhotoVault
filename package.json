@@ -49,7 +49,8 @@
           "from": "build/haptic",
           "to": "haptic"
         }
-      ]
+      ],
+      "x64ArchFiles": "Contents/Resources/haptic"
     },
     "win": {
       "target": [
