@@ -1,12 +1,13 @@
 {
   "name": "photovault",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Minimalist desktop photo storage and organization",
   "main": "main.js",
   "author": "Devoid2",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "postinstall": "node -e \"if(process.platform==='darwin'){require('child_process').execSync('swiftc build/haptic.swift -o build/haptic 2>/dev/null || true')}\"",
     "build": "electron-builder --mac --win",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win"
@@ -34,6 +35,13 @@
     "asarUnpack": [
       "node_modules/sharp/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "build/haptic",
+        "to": "haptic",
+        "filter": ["!*.swift"]
+      }
+    ],
     "mac": {
       "category": "public.app-category.photography",
       "target": [
@@ -42,7 +50,7 @@
           "arch": ["universal"]
         }
       ],
-      "icon": null
+      "icon": "build/icon.icns"
     },
     "win": {
       "target": [
@@ -55,8 +63,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": null,
-      "uninstallerIcon": null
+      "installerIcon": "build/icon.png",
+      "uninstallerIcon": "build/icon.png"
     },
     "publish": {
       "provider": "github",

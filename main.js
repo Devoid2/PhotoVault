@@ -518,6 +518,21 @@ function registerIpcHandlers() {
     const { autoUpdater } = require('electron-updater');
     autoUpdater.quitAndInstall(false, true);
   });
+
+  /* ── Haptic feedback (macOS trackpad) ──────────────── */
+  ipcMain.on('haptic:tap', () => {
+    if (process.platform !== 'darwin') return;
+    try {
+      const { execFile } = require('child_process');
+      // In packaged app: resources/haptic; in dev: build/haptic
+      const hapticPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'haptic')
+        : path.join(__dirname, 'build', 'haptic');
+      execFile(hapticPath, (err) => {
+        if (err) { /* silently ignore — binary may not exist on x86 */ }
+      });
+    } catch { /* haptic not available */ }
+  });
 }
 
 /* ═══════════════════════════════════════════════════════

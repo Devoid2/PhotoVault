@@ -41,4 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', () => cb()),
   downloadUpdate:     ()   => ipcRenderer.invoke('update:download'),
   installUpdate:      ()   => ipcRenderer.invoke('update:install'),
+
+  /* ── Haptic feedback ────────────────────────────────── */
+  hapticTap: () => ipcRenderer.send('haptic:tap'),
 });

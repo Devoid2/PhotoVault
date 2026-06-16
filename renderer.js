@@ -344,12 +344,26 @@ function renderCollectionList() {
     li.querySelector('.folder-remove').addEventListener('click', (e) => deleteCollection(col.id, e));
 
     // ── Drag & Drop target ──
+    let _hapticFired = false;
+    li.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      li.classList.add('drag-over');
+      if (!_hapticFired) {
+        _hapticFired = true;
+        api.hapticTap();
+      }
+    });
     li.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
-      li.classList.add('drag-over');
     });
-    li.addEventListener('dragleave', () => li.classList.remove('drag-over'));
+    li.addEventListener('dragleave', (e) => {
+      // Only reset when actually leaving the li (not entering a child)
+      if (!li.contains(e.relatedTarget)) {
+        li.classList.remove('drag-over');
+        _hapticFired = false;
+      }
+    });
     li.addEventListener('drop', async (e) => {
       e.preventDefault();
       li.classList.remove('drag-over');
