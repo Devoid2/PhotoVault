@@ -5,3 +5,4 @@ out/
 *.log
 Thumbs.db
 build/icon.iconset/
+build/haptic

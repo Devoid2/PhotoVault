@@ -7,7 +7,6 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "postinstall": "node -e \"if(process.platform==='darwin'){require('child_process').execSync('swiftc build/haptic.swift -o build/haptic 2>/dev/null || true')}\"",
     "build": "electron-builder --mac --win",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win"
@@ -50,7 +49,7 @@
           "to": "haptic"
         }
       ],
-      "x64ArchFiles": "Contents/Resources/haptic"
+      "x64ArchFiles": "**/haptic"
     },
     "win": {
       "target": [
