@@ -93,6 +93,17 @@
           <input type="text" id="collection-name-input" placeholder="Collection name…" maxlength="60">
         </div>
       </div>
+
+      <!-- Settings -->
+      <div class="sidebar-settings">
+        <button id="btn-settings" class="sidebar-settings-btn" title="Settings">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.1"/>
+            <path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.76 2.76l1.06 1.06M10.18 10.18l1.06 1.06M11.24 2.76l-1.06 1.06M3.82 10.18l-1.06 1.06" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+          <span>Settings</span>
+        </button>
+      </div>
     </aside>
 
     <!-- ──── MAIN CONTENT ──── -->
@@ -142,6 +153,82 @@
 
         <!-- Photo grid -->
         <div id="photo-grid" class="photo-grid" style="display:none"></div>
+      </div>
+
+      <!-- Settings view -->
+      <div id="settings-view" class="settings-view" style="display:none">
+        <div class="settings-content">
+          <h2 class="settings-title">Settings</h2>
+
+          <!-- Appearance -->
+          <div class="settings-section">
+            <div class="settings-section-title">Appearance</div>
+            <div class="theme-picker">
+              <button class="theme-option" data-theme="dark">
+                <div class="theme-preview theme-preview-dark">
+                  <div class="theme-preview-sidebar"></div>
+                  <div class="theme-preview-content">
+                    <div class="theme-preview-bar"></div>
+                    <div class="theme-preview-grid">
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                    </div>
+                  </div>
+                </div>
+                <span class="theme-option-label">Dark</span>
+              </button>
+              <button class="theme-option" data-theme="light">
+                <div class="theme-preview theme-preview-light">
+                  <div class="theme-preview-sidebar"></div>
+                  <div class="theme-preview-content">
+                    <div class="theme-preview-bar"></div>
+                    <div class="theme-preview-grid">
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                    </div>
+                  </div>
+                </div>
+                <span class="theme-option-label">Light</span>
+              </button>
+              <button class="theme-option" data-theme="system">
+                <div class="theme-preview theme-preview-system">
+                  <div class="theme-preview-sidebar"></div>
+                  <div class="theme-preview-content">
+                    <div class="theme-preview-bar"></div>
+                    <div class="theme-preview-grid">
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                      <div class="theme-preview-cell"></div>
+                    </div>
+                  </div>
+                </div>
+                <span class="theme-option-label">System</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- About -->
+          <div class="settings-section">
+            <div class="settings-section-title">About</div>
+            <div class="settings-about">
+              <div class="settings-about-row">
+                <span class="settings-about-label">Version</span>
+                <span id="about-version" class="settings-about-value">—</span>
+              </div>
+              <div class="settings-about-row">
+                <span class="settings-about-label">Updates</span>
+                <span id="about-update-status" class="settings-about-value status-checking">Checking…</span>
+              </div>
+              <button id="btn-check-update" class="settings-btn">Check for Updates</button>
+            </div>
+          </div>
+
+        </div>
       </div>
     </main>
 

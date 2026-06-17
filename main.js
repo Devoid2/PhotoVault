@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme } = require('electron');
 const path   = require('path');
 const fs     = require('fs');
 const crypto = require('crypto');
@@ -35,8 +35,9 @@ function loadStore() {
     if (!store.files)       store.files       = [];
     if (!store.collections) store.collections  = {};
     if (!store.photoCache)  store.photoCache   = {};
+    if (!store.settings)    store.settings    = { theme: 'dark' };
   } catch {
-    store = { folders: [], files: [], collections: {}, photoCache: {} };
+    store = { folders: [], files: [], collections: {}, photoCache: {}, settings: { theme: 'dark' } };
   }
 }
 
@@ -259,6 +260,20 @@ async function enrichPhoto(photo) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   NATIVE THEME
+   ═══════════════════════════════════════════════════════ */
+
+function applyNativeTheme(theme) {
+  if (theme === 'system') {
+    nativeTheme.themeSource = 'system';
+  } else if (theme === 'light') {
+    nativeTheme.themeSource = 'light';
+  } else {
+    nativeTheme.themeSource = 'dark';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
    IPC HANDLERS
    ═══════════════════════════════════════════════════════ */
 
@@ -441,6 +456,29 @@ function registerIpcHandlers() {
       .map(([id, col]) => ({ id, name: col.name }));
   });
 
+  /* ── Settings ──────────────────────────────────────────── */
+  ipcMain.handle('settings:getAll', () => {
+    return store.settings || { theme: 'dark' };
+  });
+
+  ipcMain.handle('settings:get', (_event, key) => {
+    return store.settings ? store.settings[key] : undefined;
+  });
+
+  ipcMain.handle('settings:set', (_event, key, value) => {
+    if (!store.settings) store.settings = {};
+    store.settings[key] = value;
+    saveStore();
+    // Apply native theme when theme setting changes
+    if (key === 'theme') {
+      applyNativeTheme(value);
+    }
+  });
+
+  ipcMain.handle('app:getVersion', () => {
+    return app.getVersion();
+  });
+
   /* ── Photo retrieval ───────────────────────────────── */
   ipcMain.handle('photos:getForFolder', async (_event, folderPath) => {
     const files = await scanDirectory(folderPath);
@@ -578,6 +616,10 @@ function setupAutoUpdater(win) {
       });
     });
 
+    autoUpdater.on('update-not-available', () => {
+      win.webContents.send('update:not-available');
+    });
+
     autoUpdater.on('download-progress', (progress) => {
       win.webContents.send('update:progress', {
         percent: Math.round(progress.percent),
@@ -590,6 +632,16 @@ function setupAutoUpdater(win) {
 
     autoUpdater.on('error', (err) => {
       console.error('Auto-updater error:', err.message);
+      win.webContents.send('update:error', err.message);
+    });
+
+    // Manual check handler
+    ipcMain.handle('update:check', async () => {
+      try {
+        await autoUpdater.checkForUpdates();
+      } catch (err) {
+        console.error('Update check failed:', err.message);
+      }
     });
 
     // Check for updates after a short delay
@@ -608,6 +660,7 @@ function setupAutoUpdater(win) {
 app.whenReady().then(() => {
   initPaths();
   loadStore();
+  applyNativeTheme(store.settings?.theme || 'dark');
   registerIpcHandlers();
   const win = createWindow();
   setupAutoUpdater(win);

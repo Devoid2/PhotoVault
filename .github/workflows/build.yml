@@ -36,12 +36,20 @@ jobs:
         if: runner.os == 'macOS'
         run: swiftc build/haptic.swift -o build/haptic
 
-      - name: Build
+      - name: Build & Publish (tagged release)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ${{ matrix.build_cmd }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (branch push)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         run: ${{ matrix.build_cmd }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
@@ -49,24 +57,3 @@ jobs:
             dist/*.dmg
             dist/*.exe
           if-no-files-found: ignore
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
-          generate_release_notes: true
-          draft: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -16,6 +16,9 @@ const state = {
   selectedPhoto:     null, // { path, name, ... }
   fullscreenIdx:  -1,
   fullscreenList: [],   // list of photos in current context (for ←/→ nav)
+  settingsOpen:   false,
+  theme:          'dark', // 'dark' | 'light' | 'system'
+  updateStatus:   'checking', // 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error'
 };
 
 /* ── DOM refs ──────────────────────────────────────────── */
@@ -46,6 +49,12 @@ const dom = {
   fsNext:         $('#fs-next'),
   fsFilename:     $('#fs-filename'),
   fsCounter:      $('#fs-counter'),
+  // Settings
+  settingsBtn:    $('#btn-settings'),
+  settingsView:   $('#settings-view'),
+  aboutVersion:   $('#about-version'),
+  aboutUpdate:    $('#about-update-status'),
+  checkUpdateBtn: $('#btn-check-update'),
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -53,6 +62,11 @@ const dom = {
    ═══════════════════════════════════════════════════════ */
 
 (async function init() {
+  // Load theme first (before any rendering to avoid flash)
+  const savedTheme = await api.getSetting('theme');
+  state.theme = savedTheme || 'dark';
+  applyTheme(state.theme);
+
   // Load persisted data
   state.folders = await api.getFolders();
   state.standalonePhotos = await api.getStandalonePhotos();
@@ -60,6 +74,11 @@ const dom = {
   renderFolderList();
   renderCollectionList();
   updateSidebarEmpty();
+
+  // Load app version
+  api.getAppVersion().then(v => {
+    dom.aboutVersion.textContent = v || '—';
+  });
 
   // Bind events
   dom.addFolderBtn.addEventListener('click', handleAddFolder);
@@ -71,6 +90,25 @@ const dom = {
   dom.fsClose.addEventListener('click', closeFullscreen);
   dom.fsPrev.addEventListener('click', () => navigateFullscreen(-1));
   dom.fsNext.addEventListener('click', () => navigateFullscreen(1));
+
+  // Settings
+  dom.settingsBtn.addEventListener('click', toggleSettings);
+  dom.checkUpdateBtn.addEventListener('click', () => {
+    setUpdateStatus('checking', 'Checking…');
+    api.checkForUpdate();
+  });
+
+  // Theme picker
+  document.querySelectorAll('.theme-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const theme = btn.dataset.theme;
+      state.theme = theme;
+      applyTheme(theme);
+      api.setSetting('theme', theme);
+      updateThemePicker();
+    });
+  });
+  updateThemePicker();
 
   // Add to Collection dropdown
   $('#meta-add-to-collection').addEventListener('click', toggleCollectionDropdown);
@@ -99,7 +137,10 @@ const dom = {
 
   // Tab switching
   dom.tabBar.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    tab.addEventListener('click', () => {
+      if (state.settingsOpen) closeSettings();
+      switchTab(tab.dataset.tab);
+    });
   });
 
   // Keyboard
@@ -120,6 +161,17 @@ const dom = {
    AUTO-UPDATE UI
    ═══════════════════════════════════════════════════════ */
 
+function setUpdateStatus(status, text) {
+  state.updateStatus = status;
+  const el = dom.aboutUpdate;
+  el.textContent = text;
+  el.className = 'settings-about-value';
+  if (status === 'up-to-date')   el.classList.add('status-ok');
+  else if (status === 'checking') el.classList.add('status-checking');
+  else if (status === 'error')    el.classList.add('status-error');
+  else if (status === 'available' || status === 'ready') el.classList.add('status-available');
+}
+
 function setupUpdateBar() {
   const bar       = $('#update-bar');
   const text      = $('#update-text');
@@ -135,8 +187,14 @@ function setupUpdateBar() {
     updateState = 'available';
     text.textContent = `Version ${info.version} is available`;
     actionBtn.textContent = 'Download';
+    actionBtn.style.display = '';
     progWrap.style.display = 'none';
     bar.style.display = 'block';
+    setUpdateStatus('available', `v${info.version} available`);
+  });
+
+  api.onUpdateNotAvailable(() => {
+    setUpdateStatus('up-to-date', 'Up to date');
   });
 
   api.onUpdateProgress((info) => {
@@ -146,6 +204,7 @@ function setupUpdateBar() {
     progWrap.style.display = 'flex';
     progFill.style.width = info.percent + '%';
     progPct.textContent = info.percent + '%';
+    setUpdateStatus('downloading', `Downloading ${info.percent}%`);
   });
 
   api.onUpdateDownloaded(() => {
@@ -154,6 +213,12 @@ function setupUpdateBar() {
     progWrap.style.display = 'none';
     actionBtn.style.display = '';
     actionBtn.textContent = 'Restart';
+    setUpdateStatus('ready', 'Restart to update');
+  });
+
+  api.onUpdateError((msg) => {
+    setUpdateStatus('error', 'Update check failed');
+    console.error('Update error:', msg);
   });
 
   actionBtn.addEventListener('click', () => {
@@ -169,6 +234,60 @@ function setupUpdateBar() {
   dismiss.addEventListener('click', () => {
     bar.style.display = 'none';
   });
+}
+
+/* ═══════════════════════════════════════════════════════
+   THEME MANAGEMENT
+   ═══════════════════════════════════════════════════════ */
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
+function updateThemePicker() {
+  document.querySelectorAll('.theme-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === state.theme);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   SETTINGS VIEW
+   ═══════════════════════════════════════════════════════ */
+
+function toggleSettings() {
+  if (state.settingsOpen) {
+    closeSettings();
+  } else {
+    openSettings();
+  }
+}
+
+function openSettings() {
+  state.settingsOpen = true;
+  // Hide photo content
+  dom.gridContainer.style.display = 'none';
+  dom.tabBar.style.display = 'none';
+  // Show settings
+  dom.settingsView.style.display = '';
+  // Update sidebar button
+  dom.settingsBtn.classList.add('active');
+  // Deactivate folder/collection highlights
+  document.querySelectorAll('.folder-item.active').forEach(el => el.classList.remove('active'));
+  // Close meta panel if open
+  closeMetaPanel();
+}
+
+function closeSettings() {
+  state.settingsOpen = false;
+  // Hide settings
+  dom.settingsView.style.display = 'none';
+  // Show photo content
+  dom.gridContainer.style.display = '';
+  dom.tabBar.style.display = '';
+  // Update sidebar button
+  dom.settingsBtn.classList.remove('active');
+  // Re-highlight active folder
+  highlightActiveFolder();
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -225,6 +344,7 @@ async function handleAddPhotos() {
 }
 
 async function selectFolder(folderPath) {
+  if (state.settingsOpen) closeSettings();
   if (state.currentTab !== 'folders') {
     switchTab('folders');
   }

@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCollectionPhotos:  (id)             => ipcRenderer.invoke('collections:getPhotos', id),
   getCollectionsForPhoto: (photoPath)    => ipcRenderer.invoke('collections:getForPhoto', photoPath),
 
+  /* ── Settings ─────────────────────────────────────────── */
+  getSettings:          ()              => ipcRenderer.invoke('settings:getAll'),
+  getSetting:           (key)           => ipcRenderer.invoke('settings:get', key),
+  setSetting:           (key, value)    => ipcRenderer.invoke('settings:set', key, value),
+
   /* ── Photo operations ──────────────────────────────── */
   getPhotosForFolder: (folderPath) => ipcRenderer.invoke('photos:getForFolder', folderPath),
   getAllPhotos:       ()            => ipcRenderer.invoke('photos:getAll'),
@@ -41,6 +46,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', () => cb()),
   downloadUpdate:     ()   => ipcRenderer.invoke('update:download'),
   installUpdate:      ()   => ipcRenderer.invoke('update:install'),
+  onUpdateNotAvailable: (cb) => ipcRenderer.on('update:not-available', () => cb()),
+  onUpdateError:        (cb) => ipcRenderer.on('update:error', (_e, msg) => cb(msg)),
+  checkForUpdate:       ()   => ipcRenderer.invoke('update:check'),
+
+  getAppVersion:        ()   => ipcRenderer.invoke('app:getVersion'),
 
   /* ── Haptic feedback ────────────────────────────────── */
   hapticTap: () => ipcRenderer.send('haptic:tap'),
