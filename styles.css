@@ -230,48 +230,72 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 16px 0;
+  padding: 18px 0;
 }
 
 .sidebar-section {
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  padding: 0 2px;
 }
 
 .sidebar-label {
-  font-size: var(--fs-xs);
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 1.2px;
+  letter-spacing: 1.4px;
   color: var(--text-tertiary);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-/* ── Add folder button ── */
+/* Decorative dash before section label */
+.sidebar-label::before {
+  content: '';
+  width: 12px;
+  height: 1px;
+  background: var(--border-hover);
+  flex-shrink: 0;
+}
+
+/* ── Add folder / Add photos button ── */
 .sidebar-btn {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 10px;
-  border: 1px dashed var(--border-hover);
-  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text-secondary);
   font-family: var(--font-family);
   font-size: var(--fs-sm);
   cursor: pointer;
-  transition: all var(--transition);
-  margin-bottom: 12px;
+  transition: color 0.22s ease, background 0.22s ease, border-color 0.22s ease;
+  margin-bottom: 4px;
+  position: relative;
 }
 .sidebar-btn:hover {
-  border-color: var(--text-secondary);
+  border-color: var(--border-hover);
   color: var(--text-primary);
   background: var(--highlight);
+}
+.sidebar-btn svg {
+  opacity: 0.45;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  flex-shrink: 0;
+}
+.sidebar-btn:hover svg {
+  opacity: 0.8;
+  transform: scale(1.08);
 }
 
 /* ── Folder list ── */
@@ -279,37 +303,71 @@ html, body {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .folder-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: all var(--transition);
+  transition: color 0.22s ease, background 0.22s ease;
   font-size: var(--fs-sm);
   color: var(--text-secondary);
   position: relative;
 }
+
+/* Left-edge active indicator */
+.folder-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--text-accent);
+  opacity: 0;
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.28s ease;
+}
+
 .folder-item:hover {
   background: var(--highlight);
   color: var(--text-primary);
 }
+
+/* Subtle indicator preview on hover */
+.folder-item:hover::before {
+  opacity: 0.3;
+  transform: scaleY(0.5);
+}
+
 .folder-item.active {
-  background: var(--highlight-strong);
+  background: var(--highlight);
   color: var(--text-accent);
+}
+
+/* Active indicator — fully visible */
+.folder-item.active::before {
+  opacity: 1;
+  transform: scaleY(1);
 }
 
 .folder-item svg {
   flex-shrink: 0;
-  opacity: 0.5;
+  opacity: 0.4;
+  transition: opacity 0.22s ease;
 }
-.folder-item.active svg,
 .folder-item:hover svg {
-  opacity: 0.8;
+  opacity: 0.7;
+}
+.folder-item.active svg {
+  opacity: 0.9;
 }
 
 .folder-name {
@@ -327,9 +385,9 @@ html, body {
   border: none;
   color: var(--text-tertiary);
   cursor: pointer;
-  padding: 2px;
-  border-radius: 3px;
-  transition: all var(--transition);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -347,6 +405,11 @@ html, body {
   font-size: 10px;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+  transition: color 0.22s ease;
+}
+.folder-item.active .folder-count {
+  color: var(--text-secondary);
 }
 
 /* ── Sidebar empty state ── */
@@ -356,39 +419,65 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 20px;
+  gap: 10px;
+  padding: 24px 20px;
   text-align: center;
   color: var(--text-tertiary);
   font-size: var(--fs-sm);
 }
+.sidebar-empty svg {
+  transition: transform 0.4s ease;
+}
+.sidebar-empty:hover svg {
+  transform: translateY(-2px);
+}
 .sidebar-empty-hint {
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
-  opacity: 0.7;
+  opacity: 0.6;
+  line-height: 1.5;
 }
 
 /* ── Collections sidebar section ── */
 .sidebar-section-collections {
   margin-top: auto;
-  padding-top: 12px;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
+  position: relative;
+}
+
+/* Subtle gradient fade above the divider */
+.sidebar-section-collections::before {
+  content: '';
+  position: absolute;
+  top: -16px;
+  left: 0;
+  right: 0;
+  height: 16px;
+  background: linear-gradient(
+    to top,
+    var(--bg-sidebar) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
 }
 
 .sidebar-icon-btn {
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-tertiary);
   cursor: pointer;
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
-  transition: all var(--transition);
+  transition: color 0.22s ease, background 0.22s ease, border-color 0.22s ease, transform 0.22s ease;
 }
 .sidebar-icon-btn:hover {
   color: var(--text-primary);
   background: var(--highlight);
+  border-color: var(--border-hover);
+  transform: rotate(90deg);
 }
 
 .new-collection-input {
@@ -396,18 +485,19 @@ html, body {
 }
 .new-collection-input input {
   width: 100%;
-  padding: 5px 8px;
+  padding: 6px 10px;
   background: var(--bg-input);
   border: 1px solid var(--border-hover);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   color: var(--text-primary);
   font-family: var(--font-family);
   font-size: var(--fs-sm);
   outline: none;
-  transition: border-color var(--transition);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
 }
 .new-collection-input input:focus {
   border-color: #444;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.04);
 }
 .new-collection-input input::placeholder {
   color: var(--text-tertiary);
@@ -723,42 +813,96 @@ html, body {
 /* ── Tab bar ── */
 #tab-bar {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: stretch;
+  gap: 2px;
   padding: 0 20px;
   height: var(--tab-h);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative;
 }
 
 .tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 7px;
+  padding: 0 16px;
   border: none;
-  border-radius: var(--radius);
   background: transparent;
   color: var(--text-secondary);
   font-family: var(--font-family);
   font-size: var(--fs-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: color 0.22s ease, background 0.22s ease;
+  position: relative;
+  border-radius: 0;
 }
+
+/* Underline indicator */
+.tab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 16px;
+  right: 16px;
+  height: 2px;
+  background: var(--text-accent);
+  border-radius: 2px 2px 0 0;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.28s ease;
+  opacity: 0;
+}
+
 .tab:hover {
-  background: var(--highlight);
   color: var(--text-primary);
+  background: var(--highlight);
 }
+
+/* Subtle hover underline preview */
+.tab:hover::after {
+  transform: scaleX(0.5);
+  opacity: 0.3;
+}
+
 .tab.active {
-  background: var(--highlight-strong);
   color: var(--text-accent);
+  background: transparent;
 }
+
+/* Active underline — fully visible */
+.tab.active::after {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+/* Active tab subtle glow */
+.tab.active::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 12px;
+  background: radial-gradient(
+    ellipse at bottom,
+    rgba(255, 255, 255, 0.06) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
 .tab svg {
-  opacity: 0.5;
+  opacity: 0.4;
+  transition: opacity 0.22s ease, transform 0.22s ease;
 }
-.tab.active svg,
 .tab:hover svg {
+  opacity: 0.7;
+  transform: translateY(-0.5px);
+}
+.tab.active svg {
   opacity: 0.9;
 }
 
@@ -767,6 +911,9 @@ html, body {
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  letter-spacing: 0.3px;
 }
 
 /* ── Grid container ── */
