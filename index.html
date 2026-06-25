@@ -127,6 +127,13 @@
           By Date
         </button>
 
+        <!-- Photo type filter -->
+        <div id="photo-filter" class="photo-filter">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="photos">Photos</button>
+          <button class="filter-btn" data-filter="raw">RAW</button>
+        </div>
+
         <!-- Photo count -->
         <span id="photo-count" class="photo-count"></span>
       </div>
@@ -209,6 +216,21 @@
                 </div>
                 <span class="theme-option-label">System</span>
               </button>
+            </div>
+          </div>
+
+          <!-- Photos -->
+          <div class="settings-section">
+            <div class="settings-section-title">Photos</div>
+            <div class="settings-toggle-row">
+              <div class="settings-toggle-info">
+                <span class="settings-toggle-label">Separate RAW files</span>
+                <span class="settings-toggle-hint">Show filter to separate RAW and standard photos</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggle-separate-raw">
+                <span class="toggle-slider"></span>
+              </label>
             </div>
           </div>
 

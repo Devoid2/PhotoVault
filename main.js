@@ -479,6 +479,10 @@ function registerIpcHandlers() {
     return app.getVersion();
   });
 
+  ipcMain.handle('app:getRawExtensions', () => {
+    return [...RAW_EXTENSIONS];
+  });
+
   /* ── Photo retrieval ───────────────────────────────── */
   ipcMain.handle('photos:getForFolder', async (_event, folderPath) => {
     const files = await scanDirectory(folderPath);
@@ -608,6 +612,8 @@ function setupAutoUpdater(win) {
 
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
+    // Prevent hanging on slow/unreachable servers
+    autoUpdater.requestHeaders = { 'Cache-Control': 'no-cache' };
 
     autoUpdater.on('update-available', (info) => {
       win.webContents.send('update:available', {
@@ -638,15 +644,29 @@ function setupAutoUpdater(win) {
     // Manual check handler
     ipcMain.handle('update:check', async () => {
       try {
-        await autoUpdater.checkForUpdates();
+        const checkPromise = autoUpdater.checkForUpdates();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Update check timed out')), 15000)
+        );
+        await Promise.race([checkPromise, timeoutPromise]);
       } catch (err) {
         console.error('Update check failed:', err.message);
+        win.webContents.send('update:error', err.message);
       }
     });
 
-    // Check for updates after a short delay
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
+    // Check for updates after a short delay (with timeout)
+    setTimeout(async () => {
+      try {
+        const checkPromise = autoUpdater.checkForUpdates();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Update check timed out')), 15000)
+        );
+        await Promise.race([checkPromise, timeoutPromise]);
+      } catch (err) {
+        console.error('Auto-update check failed:', err.message);
+        win.webContents.send('update:error', err.message);
+      }
     }, 5000);
   } catch (err) {
     console.error('Auto-updater setup failed:', err.message);

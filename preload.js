@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdate:       ()   => ipcRenderer.invoke('update:check'),
 
   getAppVersion:        ()   => ipcRenderer.invoke('app:getVersion'),
+  getRawExtensions:     ()   => ipcRenderer.invoke('app:getRawExtensions'),
 
   /* ── Haptic feedback ────────────────────────────────── */
   hapticTap: () => ipcRenderer.send('haptic:tap'),

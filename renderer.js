@@ -19,6 +19,9 @@ const state = {
   settingsOpen:   false,
   theme:          'dark', // 'dark' | 'light' | 'system'
   updateStatus:   'checking', // 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error'
+  currentFilter:  'all',  // 'all' | 'photos' | 'raw'
+  separateRaw:    false,  // whether filter toggle is visible
+  rawExtensions:  [],     // ['.cr2', '.cr3', ...]
 };
 
 /* ── DOM refs ──────────────────────────────────────────── */
@@ -55,6 +58,9 @@ const dom = {
   aboutVersion:   $('#about-version'),
   aboutUpdate:    $('#about-update-status'),
   checkUpdateBtn: $('#btn-check-update'),
+  // Filter
+  photoFilter:    $('#photo-filter'),
+  separateRawToggle: $('#toggle-separate-raw'),
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -80,6 +86,15 @@ const dom = {
     dom.aboutVersion.textContent = v || '—';
   });
 
+  // Load RAW extensions
+  state.rawExtensions = await api.getRawExtensions();
+
+  // Load separateRaw setting
+  const savedSeparateRaw = await api.getSetting('separateRaw');
+  state.separateRaw = savedSeparateRaw === true;
+  updateFilterVisibility();
+  dom.separateRawToggle.checked = state.separateRaw;
+
   // Bind events
   dom.addFolderBtn.addEventListener('click', handleAddFolder);
   dom.addPhotosBtn.addEventListener('click', handleAddPhotos);
@@ -96,6 +111,28 @@ const dom = {
   dom.checkUpdateBtn.addEventListener('click', () => {
     setUpdateStatus('checking', 'Checking…');
     api.checkForUpdate();
+  });
+
+  // Separate RAW toggle in settings
+  dom.separateRawToggle.addEventListener('change', () => {
+    state.separateRaw = dom.separateRawToggle.checked;
+    api.setSetting('separateRaw', state.separateRaw);
+    updateFilterVisibility();
+    if (!state.separateRaw) {
+      state.currentFilter = 'all';
+    }
+    reapplyFilter();
+  });
+
+  // Photo filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.currentFilter = btn.dataset.filter;
+      document.querySelectorAll('.filter-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.filter === state.currentFilter)
+      );
+      reapplyFilter();
+    });
   });
 
   // Theme picker
@@ -291,6 +328,40 @@ function closeSettings() {
 }
 
 /* ═══════════════════════════════════════════════════════
+   PHOTO FILTER (RAW / Photos / All)
+   ═══════════════════════════════════════════════════════ */
+
+function isRawPhoto(photo) {
+  return state.rawExtensions.includes(photo.ext);
+}
+
+function filterPhotos(photos) {
+  if (!state.separateRaw || state.currentFilter === 'all') return photos;
+  if (state.currentFilter === 'raw') return photos.filter(p => isRawPhoto(p));
+  if (state.currentFilter === 'photos') return photos.filter(p => !isRawPhoto(p));
+  return photos;
+}
+
+function updateFilterVisibility() {
+  dom.photoFilter.classList.toggle('visible', state.separateRaw);
+}
+
+function reapplyFilter() {
+  // Update filter button highlights
+  document.querySelectorAll('.filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.filter === state.currentFilter)
+  );
+  // Re-render current view
+  if (state.currentTab === 'folders' && state.photos.length > 0) {
+    const filtered = filterPhotos(state.photos);
+    renderPhotoGrid(filtered);
+  } else if (state.currentTab === 'date' && state.allPhotos.length > 0) {
+    const filtered = filterPhotos(state.allPhotos);
+    renderDateGroupedGrid(filtered);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
    FOLDER MANAGEMENT
    ═══════════════════════════════════════════════════════ */
 
@@ -312,7 +383,7 @@ async function handleAddFolder() {
   renderFolderList();
   updateSidebarEmpty();
   highlightActiveFolder();
-  renderPhotoGrid(photos);
+  renderPhotoGrid(filterPhotos(photos));
   showGrid();
 
   if (state.currentTab === 'date') {
@@ -335,7 +406,7 @@ async function handleAddPhotos() {
   renderFolderList();
   updateSidebarEmpty();
   highlightActiveFolder();
-  renderPhotoGrid(state.standalonePhotos);
+  renderPhotoGrid(filterPhotos(state.standalonePhotos));
   showGrid();
 
   if (state.currentTab === 'date') {
@@ -364,7 +435,7 @@ async function selectFolder(folderPath) {
     photos = await api.getPhotosForFolder(folderPath);
   }
   state.photos = photos;
-  renderPhotoGrid(photos);
+  renderPhotoGrid(filterPhotos(photos));
   showGrid();
 }
 
@@ -575,7 +646,7 @@ async function switchTab(tab) {
       showLoading();
       const photos = await api.getPhotosForFolder(state.currentFolder);
       state.photos = photos;
-      renderPhotoGrid(photos);
+      renderPhotoGrid(filterPhotos(photos));
       showGrid();
     } else {
       showWelcome();
@@ -584,7 +655,7 @@ async function switchTab(tab) {
     showLoading();
     const allPhotos = await api.getAllPhotos();
     state.allPhotos = allPhotos;
-    renderDateGroupedGrid(allPhotos);
+    renderDateGroupedGrid(filterPhotos(allPhotos));
     showGrid();
   }
 }
@@ -924,7 +995,7 @@ async function renderPhotoCollections(photoPath) {
       if (state.currentFolder === `__collection__:${col.id}`) {
         const photos = await api.getCollectionPhotos(col.id);
         state.photos = photos;
-        renderPhotoGrid(photos);
+        renderPhotoGrid(filterPhotos(photos));
       }
     });
     list.appendChild(tag);
@@ -972,7 +1043,7 @@ async function populateCollectionDropdown() {
       if (state.currentFolder === `__collection__:${col.id}`) {
         const photos = await api.getCollectionPhotos(col.id);
         state.photos = photos;
-        renderPhotoGrid(photos);
+        renderPhotoGrid(filterPhotos(photos));
       }
     });
     li.appendChild(btn);

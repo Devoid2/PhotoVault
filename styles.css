@@ -967,6 +967,47 @@ html, body {
   opacity: 0.9;
 }
 
+/* ── Photo filter toggle ── */
+.photo-filter {
+  display: none; /* hidden by default, shown via JS when enabled */
+  align-items: center;
+  gap: 2px;
+  margin-left: 12px;
+  padding: 2px;
+  background: var(--highlight);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+}
+
+.photo-filter.visible {
+  display: flex;
+}
+
+.filter-btn {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-family);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.filter-btn:hover {
+  color: var(--text-secondary);
+}
+
+.filter-btn.active {
+  background: var(--bg-card);
+  color: var(--text-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
 .photo-count {
   margin-left: auto;
   font-size: var(--fs-xs);
@@ -1653,6 +1694,75 @@ html, body {
   opacity: 0.4;
   cursor: default;
   pointer-events: none;
+}
+
+/* ── Settings toggle row ── */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.settings-toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-toggle-label {
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.settings-toggle-hint {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+/* ── Toggle switch (iOS-style) ── */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border-hover);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  bottom: 3px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  transition: transform 0.25s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--text-accent);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(18px);
 }
 
 /* ═══════════════════════════════════════════════════════
