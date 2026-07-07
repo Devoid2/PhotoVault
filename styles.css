@@ -26,6 +26,7 @@
 
   --shadow-card:    0 4px 20px rgba(0, 0, 0, 0.5);
   --shadow-dropdown: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --shadow-panel:   0 2px 16px rgba(0, 0, 0, 0.25);
   --overlay-bg:     rgba(0, 0, 0, 0.6);
 
   /* ── Sizing ─────────────────────────────────────────── */
@@ -73,6 +74,7 @@
 
   --shadow-card:    0 2px 12px rgba(0, 0, 0, 0.08);
   --shadow-dropdown: 0 8px 30px rgba(0, 0, 0, 0.12);
+  --shadow-panel:   0 2px 12px rgba(0, 0, 0, 0.06);
   --overlay-bg:     rgba(0, 0, 0, 0.3);
 }
 
@@ -101,6 +103,7 @@
 
     --shadow-card:    0 2px 12px rgba(0, 0, 0, 0.08);
     --shadow-dropdown: 0 8px 30px rgba(0, 0, 0, 0.12);
+    --shadow-panel:   0 2px 12px rgba(0, 0, 0, 0.06);
     --overlay-bg:     rgba(0, 0, 0, 0.3);
   }
 }
@@ -151,7 +154,6 @@ html, body {
   justify-content: center;
   z-index: 100;
   background: var(--bg-base);
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .titlebar-drag {
@@ -277,21 +279,27 @@ html, body {
   display: flex;
   height: calc(100vh - var(--titlebar-h));
   margin-top: var(--titlebar-h);
+  padding: 8px;
+  gap: 8px;
+  background: var(--bg-base);
 }
 
 /* ═══════════════════════════════════════════════════════
-   LEFT SIDEBAR
+   LEFT SIDEBAR  (floating panel)
    ═══════════════════════════════════════════════════════ */
 
 #sidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 18px 0;
+  overflow-x: hidden;
+  padding: 14px 0;
+  box-shadow: var(--shadow-panel);
 }
 
 .sidebar-section {
@@ -341,7 +349,7 @@ html, body {
   font-size: var(--fs-sm);
   cursor: pointer;
   transition: color 0.22s ease, background 0.22s ease, border-color 0.22s ease;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   position: relative;
 }
 .sidebar-btn:hover {
@@ -357,6 +365,14 @@ html, body {
 .sidebar-btn:hover svg {
   opacity: 0.8;
   transform: scale(1.08);
+}
+
+/* ── Divider between action buttons and folder list ── */
+.sidebar-btn + .sidebar-btn + .folder-list,
+.sidebar-btn + .folder-list {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* ── Folder list ── */
@@ -869,6 +885,10 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel);
 }
 
 /* ── Tab bar ── */
@@ -971,12 +991,11 @@ html, body {
 .photo-filter {
   display: none; /* hidden by default, shown via JS when enabled */
   align-items: center;
-  gap: 2px;
-  margin-left: 12px;
-  padding: 2px;
-  background: var(--highlight);
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
+  gap: 0;
+  margin-left: 8px;
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 4px;
+  height: 100%;
 }
 
 .photo-filter.visible {
@@ -984,28 +1003,55 @@ html, body {
 }
 
 .filter-btn {
-  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  height: 100%;
   border: none;
-  border-radius: 4px;
   background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-family);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.3px;
   cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease;
+  transition: color 0.22s ease;
+  position: relative;
+}
+
+/* Underline indicator (matching tab style) */
+.filter-btn::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  background: var(--text-accent);
+  border-radius: 2px 2px 0 0;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.28s ease;
+  opacity: 0;
 }
 
 .filter-btn:hover {
   color: var(--text-secondary);
 }
 
+.filter-btn:hover::after {
+  transform: scaleX(0.5);
+  opacity: 0.3;
+}
+
 .filter-btn.active {
-  background: var(--bg-card);
   color: var(--text-accent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.filter-btn.active::after {
+  transform: scaleX(1);
+  opacity: 1;
 }
 
 .photo-count {

@@ -57,30 +57,6 @@
 | CR2 | Canon RAW |
 | CR3 | Canon RAW |
 
-## Building from Source
-
-```bash
-git clone https://github.com/Devoid2/PhotoVault.git
-cd PhotoVault
-npm install
-npm start
-```
-
-### Package for Distribution
-
-```bash
-# macOS (.dmg)
-npm run build:mac
-
-# Windows (.exe installer)
-npm run build:win
-
-# Both platforms
-npm run build
-```
-
-Built files appear in `dist/`.
-
 ## Tech Stack
 
 | Component | Technology |
