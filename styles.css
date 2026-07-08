@@ -367,6 +367,12 @@ html, body {
   transform: scale(1.08);
 }
 
+/* ── All Photos sidebar item ── */
+.sidebar-all-photos {
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
 /* ── Divider between action buttons and folder list ── */
 .sidebar-btn + .sidebar-btn + .folder-list,
 .sidebar-btn + .folder-list {

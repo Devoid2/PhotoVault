@@ -10,6 +10,7 @@ const state = {
   standalonePhotos:  [],   // photos added individually
   collections:       [],   // { id, name, count }[]
   currentTab:        'folders',
+  scope:             'library', // 'library' | 'all'
   currentFolder:     null, // folder path | '__standalone__' | '__collection__:id'
   photos:            [],   // current photo list to display
   allPhotos:         [],   // all photos from every folder (for date tab)
@@ -31,6 +32,7 @@ const dom = {
   sidebarEmpty:   $('#sidebar-empty'),
   addFolderBtn:   $('#btn-add-folder'),
   addPhotosBtn:   $('#btn-add-photos'),
+  allPhotosBtn:   $('#btn-all-photos'),
   tabBar:         $('#tab-bar'),
   // Collections sidebar
   collectionList:      $('#collection-list'),
@@ -98,6 +100,7 @@ const dom = {
   // Bind events
   dom.addFolderBtn.addEventListener('click', handleAddFolder);
   dom.addPhotosBtn.addEventListener('click', handleAddPhotos);
+  dom.allPhotosBtn.addEventListener('click', () => selectAllPhotos());
   dom.newCollectionBtn.addEventListener('click', showNewCollectionInput);
   dom.newCollectionInput.addEventListener('keydown', handleNewCollectionKey);
   dom.newCollectionInput.addEventListener('blur', commitNewCollection);
@@ -352,12 +355,17 @@ function reapplyFilter() {
     b.classList.toggle('active', b.dataset.filter === state.currentFilter)
   );
   // Re-render current view
-  if (state.currentTab === 'folders' && state.photos.length > 0) {
-    const filtered = filterPhotos(state.photos);
-    renderPhotoGrid(filtered);
-  } else if (state.currentTab === 'date' && state.allPhotos.length > 0) {
+  if (state.scope === 'all' && state.allPhotos.length > 0) {
     const filtered = filterPhotos(state.allPhotos);
-    renderDateGroupedGrid(filtered);
+    if (state.currentTab === 'folders') {
+      renderFolderGroupedGrid(filtered);
+    } else {
+      renderDateGroupedGrid(filtered);
+    }
+  } else if (state.currentTab === 'folders' && state.photos.length > 0) {
+    renderPhotoGrid(filterPhotos(state.photos));
+  } else if (state.currentTab === 'date' && state.allPhotos.length > 0) {
+    renderDateGroupedGrid(filterPhotos(state.allPhotos));
   }
 }
 
@@ -416,6 +424,7 @@ async function handleAddPhotos() {
 
 async function selectFolder(folderPath) {
   if (state.settingsOpen) closeSettings();
+  state.scope = 'library';
   if (state.currentTab !== 'folders') {
     switchTab('folders');
   }
@@ -615,11 +624,18 @@ async function deleteCollection(colId, e) {
 }
 
 function highlightActiveFolder() {
+  // All Photos button
+  dom.allPhotosBtn.classList.toggle('active', state.scope === 'all');
+  // Folder items
   dom.folderList.querySelectorAll('.folder-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.path === state.currentFolder);
+    item.classList.toggle('active',
+      state.scope === 'library' && item.dataset.path === state.currentFolder
+    );
   });
   dom.collectionList.querySelectorAll('.folder-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.path === state.currentFolder);
+    item.classList.toggle('active',
+      state.scope === 'library' && item.dataset.path === state.currentFolder
+    );
   });
 }
 
@@ -629,8 +645,16 @@ function updateSidebarEmpty() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   TAB SWITCHING
+   TAB SWITCHING & ALL PHOTOS
    ═══════════════════════════════════════════════════════ */
+
+async function selectAllPhotos() {
+  if (state.settingsOpen) closeSettings();
+  state.scope = 'all';
+  state.currentFolder = null;
+  highlightActiveFolder();
+  switchTab('folders'); // default view for All Photos is "folders"
+}
 
 async function switchTab(tab) {
   state.currentTab = tab;
@@ -641,22 +665,112 @@ async function switchTab(tab) {
 
   closeMetaPanel();
 
-  if (tab === 'folders') {
-    if (state.currentFolder) {
-      showLoading();
-      const photos = await api.getPhotosForFolder(state.currentFolder);
-      state.photos = photos;
-      renderPhotoGrid(filterPhotos(photos));
-      showGrid();
-    } else {
-      showWelcome();
-    }
-  } else if (tab === 'date') {
+  if (state.scope === 'all') {
+    // ── All Photos scope ──
     showLoading();
     const allPhotos = await api.getAllPhotos();
     state.allPhotos = allPhotos;
-    renderDateGroupedGrid(filterPhotos(allPhotos));
+
+    if (tab === 'folders') {
+      renderFolderGroupedGrid(filterPhotos(allPhotos));
+    } else if (tab === 'date') {
+      renderDateGroupedGrid(filterPhotos(allPhotos));
+    }
     showGrid();
+  } else {
+    // ── Library scope (single folder / standalone / collection) ──
+    if (tab === 'folders') {
+      if (state.currentFolder) {
+        showLoading();
+        let photos;
+        if (state.currentFolder === '__standalone__') {
+          photos = await api.getStandalonePhotos();
+          state.standalonePhotos = photos;
+        } else if (state.currentFolder.startsWith('__collection__:')) {
+          const colId = state.currentFolder.replace('__collection__:', '');
+          photos = await api.getCollectionPhotos(colId);
+        } else {
+          photos = await api.getPhotosForFolder(state.currentFolder);
+        }
+        state.photos = photos;
+        renderPhotoGrid(filterPhotos(photos));
+        showGrid();
+      } else {
+        showWelcome();
+      }
+    } else if (tab === 'date') {
+      // By Date in library scope: only standalone photos
+      showLoading();
+      const standalonePhotos = await api.getStandalonePhotos();
+      state.standalonePhotos = standalonePhotos;
+      state.allPhotos = standalonePhotos;
+      renderDateGroupedGrid(filterPhotos(standalonePhotos));
+      showGrid();
+    }
+  }
+}
+
+/** Render photos grouped by folder with section headers */
+function renderFolderGroupedGrid(photos) {
+  dom.photoGrid.innerHTML = '';
+
+  // Group by folder
+  const groups = {};
+  const standalone = [];
+
+  photos.forEach(photo => {
+    if (photo.folder === '__standalone__') {
+      standalone.push(photo);
+    } else if (photo.folder) {
+      if (!groups[photo.folder]) groups[photo.folder] = [];
+      groups[photo.folder].push(photo);
+    } else {
+      standalone.push(photo);
+    }
+  });
+
+  let globalIdx = 0;
+  state.fullscreenList = photos;
+  dom.photoCount.textContent = `${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
+
+  // Render folder groups
+  const folderKeys = Object.keys(groups).sort();
+  for (const folderPath of folderKeys) {
+    const folderPhotos = groups[folderPath];
+    const folderName = folderPath.split('/').pop() || folderPath;
+
+    // Section header
+    const header = document.createElement('div');
+    header.className = 'date-group-header';
+    header.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="opacity:0.5">
+      <path d="M1.5 3.5C1.5 2.94772 1.94772 2.5 2.5 2.5H5.5L7 4H11.5C12.0523 4 12.5 4.44772 12.5 5V10.5C12.5 11.0523 12.0523 11.5 11.5 11.5H2.5C1.94772 11.5 1.5 11.0523 1.5 10.5V3.5Z" stroke="currentColor" stroke-width="1"/>
+    </svg> ${folderName} <span class="date-group-count">${folderPhotos.length}</span>`;
+    dom.photoGrid.appendChild(header);
+
+    // Photos
+    for (const photo of folderPhotos) {
+      const card = createPhotoCard(photo, globalIdx);
+      dom.photoGrid.appendChild(card);
+      globalIdx++;
+    }
+  }
+
+  // Render standalone photos
+  if (standalone.length > 0) {
+    const header = document.createElement('div');
+    header.className = 'date-group-header';
+    header.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="opacity:0.5">
+      <rect x="1.5" y="2.5" width="11" height="9" rx="1" stroke="currentColor" stroke-width="1"/>
+      <circle cx="5" cy="5.5" r="1.2" stroke="currentColor" stroke-width="0.9"/>
+      <path d="M1.5 9.5L4.5 7L6.5 8.5L9 6L12.5 9.5" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg> Photos <span class="date-group-count">${standalone.length}</span>`;
+    dom.photoGrid.appendChild(header);
+
+    for (const photo of standalone) {
+      const card = createPhotoCard(photo, globalIdx);
+      dom.photoGrid.appendChild(card);
+      globalIdx++;
+    }
   }
 }
 
