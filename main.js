@@ -153,7 +153,7 @@ function thumbHash(filePath) {
   return crypto.createHash('md5').update(filePath).digest('hex');
 }
 
-async function generateThumbnail(filePath, size = 320) {
+async function generateThumbnail(filePath, size = 480) {
   const hash      = thumbHash(filePath);
   const thumbPath = path.join(THUMBNAIL_DIR, `${hash}.webp`);
 

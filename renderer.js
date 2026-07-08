@@ -761,14 +761,20 @@ function createPhotoCard(photo, index) {
   // Load thumbnail
   loadThumbnail(img, photo.path, card);
 
-  // Click → select
+  // Click → fullscreen (delayed to distinguish from dblclick)
+  let clickTimer = null;
   card.addEventListener('click', () => {
-    selectPhoto(photo, index);
+    if (clickTimer) clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => {
+      openFullscreen(index);
+      clickTimer = null;
+    }, 220);
   });
 
-  // Double-click → fullscreen
+  // Double-click → info panel (cancels single-click)
   card.addEventListener('dblclick', () => {
-    openFullscreen(index);
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+    selectPhoto(photo, index);
   });
 
   // Right-click → context menu
