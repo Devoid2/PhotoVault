@@ -9,7 +9,24 @@ permissions:
   contents: write
 
 jobs:
+  # ── Create a single release (tag pushes only) ──
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: false
+          name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Build per platform ──
   build:
+    needs: [create-release]
+    if: always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -58,3 +75,17 @@ jobs:
             dist/*.dmg
             dist/*.exe
           if-no-files-found: ignore
+
+  # ── Publish the draft release after both builds finish ──
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
