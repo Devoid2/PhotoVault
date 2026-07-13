@@ -551,9 +551,22 @@ function registerIpcHandlers() {
   });
 
   /* ── Auto-update controls ──────────────────────────── */
-  ipcMain.handle('update:download', () => {
+  ipcMain.handle('update:download', async () => {
     const { autoUpdater } = require('electron-updater');
-    autoUpdater.downloadUpdate();
+    try {
+      const downloadPromise = autoUpdater.downloadUpdate();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Download timed out')), 120000)
+      );
+      await Promise.race([downloadPromise, timeoutPromise]);
+    } catch (err) {
+      console.error('Download failed:', err.message);
+      // Forward error to renderer so UI can recover
+      const wins = BrowserWindow.getAllWindows();
+      if (wins.length > 0) {
+        wins[0].webContents.send('update:error', err.message);
+      }
+    }
   });
 
   ipcMain.handle('update:install', () => {

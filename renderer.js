@@ -257,7 +257,15 @@ function setupUpdateBar() {
   });
 
   api.onUpdateError((msg) => {
-    setUpdateStatus('error', 'Update check failed');
+    if (updateState === 'downloading' || text.textContent === 'Starting download…') {
+      // Download failed — let user retry
+      updateState = 'available';
+      text.textContent = 'Download failed — try again';
+      actionBtn.textContent = 'Retry';
+      actionBtn.style.display = '';
+      progWrap.style.display = 'none';
+    }
+    setUpdateStatus('error', 'Update failed');
     console.error('Update error:', msg);
   });
 
