@@ -1,7 +1,9 @@
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme } = require('electron');
-const path   = require('path');
-const fs     = require('fs');
-const crypto = require('crypto');
+const path     = require('path');
+const fs       = require('fs');
+const crypto   = require('crypto');
+const chokidar = require('chokidar');
+const db       = require('./database');
 
 /* ═══════════════════════════════════════════════════════
    CONFIG & PATHS
@@ -13,37 +15,17 @@ const SUPPORTED_EXTENSIONS = new Set([
 const RAW_EXTENSIONS = new Set(['.cr2', '.cr3']);
 
 let THUMBNAIL_DIR;
-let STORE_PATH;
-let store = { folders: [], photoCache: {} };
 
 function initPaths() {
   const userData = app.getPath('userData');
-  THUMBNAIL_DIR = path.join(userData, 'thumbnails');
-  STORE_PATH    = path.join(userData, 'store.json');
+  THUMBNAIL_DIR  = path.join(userData, 'thumbnails');
+  const dbPath   = path.join(userData, 'store.db');
+  const jsonPath = path.join(userData, 'store.json');
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
+  db.initDatabase(dbPath, jsonPath);
 }
 
-/* ═══════════════════════════════════════════════════════
-   PERSISTENT STORE  (simple JSON file)
-   ═══════════════════════════════════════════════════════ */
-
-function loadStore() {
-  try {
-    const raw = fs.readFileSync(STORE_PATH, 'utf-8');
-    store = JSON.parse(raw);
-    if (!store.folders)     store.folders     = [];
-    if (!store.files)       store.files       = [];
-    if (!store.collections) store.collections  = {};
-    if (!store.photoCache)  store.photoCache   = {};
-    if (!store.settings)    store.settings    = { theme: 'dark' };
-  } catch {
-    store = { folders: [], files: [], collections: {}, photoCache: {}, settings: { theme: 'dark' } };
-  }
-}
-
-function saveStore() {
-  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), 'utf-8');
-}
+/* (Persistent store is now handled by database.js — SQLite via better-sqlite3) */
 
 /* ═══════════════════════════════════════════════════════
    FILE SCANNING
@@ -242,21 +224,44 @@ async function getFullImage(filePath) {
    ENRICH PHOTOS  (read date/camera/lens and cache it)
    ═══════════════════════════════════════════════════════ */
 
+/**
+ * Enrich a single photo with cached EXIF metadata.
+ * Returns the enriched photo object AND the cache entry to persist
+ * (caller is responsible for batching upserts via db.upsertCacheBatch).
+ */
 async function enrichPhoto(photo) {
-  const cached = store.photoCache[photo.path];
+  const cached = db.getCachedMeta(photo.path);
   if (cached && cached.mtime === photo.mtime) {
-    return { ...photo, ...cached };
+    return { enriched: { ...photo, ...cached }, cacheEntry: null };
   }
 
   const meta = await readDateTaken(photo.path);
-  const enriched = {
+  const entry = {
+    path:      photo.path,
     dateTaken: meta?.dateTaken || null,
     camera:    meta?.camera    || null,
     lens:      meta?.lens      || null,
     mtime:     photo.mtime,
   };
-  store.photoCache[photo.path] = enriched;
-  return { ...photo, ...enriched };
+  return {
+    enriched:   { ...photo, dateTaken: entry.dateTaken, camera: entry.camera, lens: entry.lens, mtime: entry.mtime },
+    cacheEntry: entry,
+  };
+}
+
+/** Helper: enrich an array of photos and batch-write new cache entries */
+async function enrichPhotos(photos) {
+  const results = [];
+  const newCacheEntries = [];
+  for (const p of photos) {
+    const { enriched, cacheEntry } = await enrichPhoto(p);
+    results.push(enriched);
+    if (cacheEntry) newCacheEntries.push(cacheEntry);
+  }
+  if (newCacheEntries.length > 0) {
+    db.upsertCacheBatch(newCacheEntries);
+  }
+  return results;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -270,6 +275,108 @@ function applyNativeTheme(theme) {
     nativeTheme.themeSource = 'light';
   } else {
     nativeTheme.themeSource = 'dark';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   FILE WATCHER  (chokidar — live folder monitoring)
+   ═══════════════════════════════════════════════════════ */
+
+/** @type {Map<string, import('chokidar').FSWatcher>} */
+const watchers = new Map();
+
+// Debounce buffers — batch events every DEBOUNCE_MS
+let _addBuffer    = [];  // { filePath, folder }[]
+let _unlinkBuffer = [];  // filePath[]
+let _debounceTimer = null;
+const DEBOUNCE_MS  = 500;
+
+function startWatching(folderPath) {
+  if (watchers.has(folderPath)) return;
+
+  const watcher = chokidar.watch(folderPath, {
+    ignored: /(^|[\/\\])\./,        // skip hidden files/dirs
+    persistent: true,
+    ignoreInitial: true,             // don't fire for existing files
+    awaitWriteFinish: {              // wait for large file copies to finish
+      stabilityThreshold: 300,
+      pollInterval: 100,
+    },
+  });
+
+  watcher.on('add', (filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    if (!SUPPORTED_EXTENSIONS.has(ext)) return;
+    _addBuffer.push({ filePath, folder: folderPath });
+    scheduleFlush();
+  });
+
+  watcher.on('unlink', (filePath) => {
+    const ext = path.extname(filePath).toLowerCase();
+    if (!SUPPORTED_EXTENSIONS.has(ext)) return;
+    _unlinkBuffer.push(filePath);
+    scheduleFlush();
+  });
+
+  watchers.set(folderPath, watcher);
+}
+
+function stopWatching(folderPath) {
+  const w = watchers.get(folderPath);
+  if (w) {
+    w.close();
+    watchers.delete(folderPath);
+  }
+}
+
+function stopAllWatchers() {
+  for (const [, w] of watchers) w.close();
+  watchers.clear();
+}
+
+function scheduleFlush() {
+  if (_debounceTimer) return; // already scheduled
+  _debounceTimer = setTimeout(async () => {
+    _debounceTimer = null;
+    await flushWatcherBuffers();
+  }, DEBOUNCE_MS);
+}
+
+async function flushWatcherBuffers() {
+  const added   = _addBuffer.splice(0);
+  const removed = _unlinkBuffer.splice(0);
+
+  const win = BrowserWindow.getAllWindows()[0];
+  if (!win) return;
+
+  // ── Process additions ──
+  if (added.length > 0) {
+    const photos = [];
+    const cacheEntries = [];
+    for (const { filePath, folder } of added) {
+      try {
+        const stat = await fs.promises.stat(filePath);
+        const photo = {
+          path:  filePath,
+          name:  path.basename(filePath),
+          size:  stat.size,
+          mtime: stat.mtimeMs,
+          ext:   path.extname(filePath).toLowerCase(),
+        };
+        const { enriched, cacheEntry } = await enrichPhoto(photo);
+        photos.push({ ...enriched, folder });
+        if (cacheEntry) cacheEntries.push(cacheEntry);
+      } catch { /* file may have vanished between event and stat */ }
+    }
+    if (cacheEntries.length > 0) db.upsertCacheBatch(cacheEntries);
+    if (photos.length > 0) {
+      win.webContents.send('photos:added', photos);
+    }
+  }
+
+  // ── Process removals ──
+  if (removed.length > 0) {
+    win.webContents.send('photos:removed', removed);
   }
 }
 
@@ -310,165 +417,126 @@ function registerIpcHandlers() {
 
   /* ── Folder management ─────────────────────────────── */
   ipcMain.handle('store:getFolders', () => {
-    return store.folders;
+    return db.getFolders();
   });
 
   ipcMain.handle('store:addFolder', async (_event, folderPath) => {
-    if (!store.folders.includes(folderPath)) {
-      store.folders.push(folderPath);
-      saveStore();
-    }
+    db.addFolder(folderPath);
+    startWatching(folderPath);
     // Scan and return photos
     const files = await scanDirectory(folderPath);
-    // Enrich with cached metadata (non-blocking batch)
-    const enriched = [];
-    for (const f of files) {
-      enriched.push(await enrichPhoto(f));
-    }
-    saveStore(); // persist newly-cached metadata
-    return enriched;
+    // Enrich with cached metadata (batch transaction)
+    return await enrichPhotos(files);
   });
 
   ipcMain.handle('store:removeFolder', (_event, folderPath) => {
-    store.folders = store.folders.filter(f => f !== folderPath);
-    // Clean cache entries for this folder
-    for (const key of Object.keys(store.photoCache)) {
-      if (key.startsWith(folderPath)) {
-        delete store.photoCache[key];
-      }
-    }
-    saveStore();
+    stopWatching(folderPath);
+    db.removeFolder(folderPath);
   });
 
   /* ── Standalone file management ────────────────────── */
   ipcMain.handle('store:addFiles', async (_event, filePaths) => {
-    const newPaths = filePaths.filter(fp => !store.files.includes(fp));
-    store.files.push(...newPaths);
-    saveStore();
+    const existingFiles = new Set(db.getFiles());
+    const newPaths = filePaths.filter(fp => !existingFiles.has(fp));
+    if (newPaths.length > 0) db.addFilesBatch(newPaths);
     // Return enriched photo objects for the newly added files
-    const enriched = [];
+    const photos = [];
     for (const fp of newPaths) {
       try {
         const stat = await fs.promises.stat(fp);
-        const photo = {
+        photos.push({
           path:  fp,
           name:  path.basename(fp),
           size:  stat.size,
           mtime: stat.mtimeMs,
           ext:   path.extname(fp).toLowerCase(),
-        };
-        enriched.push(await enrichPhoto(photo));
+        });
       } catch { /* skip inaccessible */ }
     }
-    saveStore();
-    return enriched;
+    return await enrichPhotos(photos);
   });
 
   ipcMain.handle('store:removeFile', (_event, filePath) => {
-    store.files = store.files.filter(f => f !== filePath);
-    delete store.photoCache[filePath];
-    saveStore();
+    db.removeFile(filePath);
   });
 
   ipcMain.handle('photos:getStandalone', async () => {
-    const enriched = [];
-    for (const fp of store.files) {
+    const filePaths = db.getFiles();
+    const photos = [];
+    for (const fp of filePaths) {
       try {
         const stat = await fs.promises.stat(fp);
-        const photo = {
+        photos.push({
           path:  fp,
           name:  path.basename(fp),
           size:  stat.size,
           mtime: stat.mtimeMs,
           ext:   path.extname(fp).toLowerCase(),
-        };
-        enriched.push(await enrichPhoto(photo));
+        });
       } catch { /* skip */ }
     }
-    saveStore();
-    return enriched;
+    return await enrichPhotos(photos);
   });
 
   /* ── Collection management ─────────────────────────── */
   ipcMain.handle('collections:getAll', () => {
-    return Object.entries(store.collections).map(([id, col]) => ({
-      id, name: col.name, count: col.photos.length,
-    }));
+    return db.getAllCollections();
   });
 
   ipcMain.handle('collections:create', (_event, name) => {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    store.collections[id] = { name, photos: [] };
-    saveStore();
+    db.createCollection(id, name);
     return { id, name, count: 0 };
   });
 
   ipcMain.handle('collections:rename', (_event, id, name) => {
-    if (store.collections[id]) {
-      store.collections[id].name = name;
-      saveStore();
-    }
+    db.renameCollection(id, name);
   });
 
   ipcMain.handle('collections:delete', (_event, id) => {
-    delete store.collections[id];
-    saveStore();
+    db.deleteCollection(id);
   });
 
   ipcMain.handle('collections:addPhoto', (_event, id, photoPath) => {
-    const col = store.collections[id];
-    if (col && !col.photos.includes(photoPath)) {
-      col.photos.push(photoPath);
-      saveStore();
-    }
+    db.addPhotoToCollection(id, photoPath);
   });
 
   ipcMain.handle('collections:removePhoto', (_event, id, photoPath) => {
-    const col = store.collections[id];
-    if (col) {
-      col.photos = col.photos.filter(p => p !== photoPath);
-      saveStore();
-    }
+    db.removePhotoFromCollection(id, photoPath);
   });
 
   ipcMain.handle('collections:getPhotos', async (_event, id) => {
-    const col = store.collections[id];
-    if (!col) return [];
-    const enriched = [];
-    for (const fp of col.photos) {
+    const photoPaths = db.getCollectionPhotos(id);
+    if (photoPaths.length === 0) return [];
+    const photos = [];
+    for (const fp of photoPaths) {
       try {
         const stat = await fs.promises.stat(fp);
-        const photo = {
+        photos.push({
           path: fp, name: path.basename(fp),
           size: stat.size, mtime: stat.mtimeMs,
           ext: path.extname(fp).toLowerCase(),
-        };
-        enriched.push(await enrichPhoto(photo));
+        });
       } catch { /* file may have been moved/deleted */ }
     }
-    saveStore();
-    return enriched;
+    return await enrichPhotos(photos);
   });
 
   ipcMain.handle('collections:getForPhoto', (_event, photoPath) => {
-    return Object.entries(store.collections)
-      .filter(([, col]) => col.photos.includes(photoPath))
-      .map(([id, col]) => ({ id, name: col.name }));
+    return db.getCollectionsForPhoto(photoPath);
   });
 
   /* ── Settings ──────────────────────────────────────────── */
   ipcMain.handle('settings:getAll', () => {
-    return store.settings || { theme: 'dark' };
+    return db.getAllSettings();
   });
 
   ipcMain.handle('settings:get', (_event, key) => {
-    return store.settings ? store.settings[key] : undefined;
+    return db.getSetting(key);
   });
 
   ipcMain.handle('settings:set', (_event, key, value) => {
-    if (!store.settings) store.settings = {};
-    store.settings[key] = value;
-    saveStore();
+    db.setSetting(key, value);
     // Apply native theme when theme setting changes
     if (key === 'theme') {
       applyNativeTheme(value);
@@ -486,25 +554,22 @@ function registerIpcHandlers() {
   /* ── Photo retrieval ───────────────────────────────── */
   ipcMain.handle('photos:getForFolder', async (_event, folderPath) => {
     const files = await scanDirectory(folderPath);
-    const enriched = [];
-    for (const f of files) {
-      enriched.push(await enrichPhoto(f));
-    }
-    saveStore();
-    return enriched;
+    return await enrichPhotos(files);
   });
 
   ipcMain.handle('photos:getAll', async () => {
     const all = [];
-    for (const folder of store.folders) {
+    const newCacheEntries = [];
+    for (const folder of db.getFolders()) {
       const files = await scanDirectory(folder);
       for (const f of files) {
-        const enriched = await enrichPhoto(f);
+        const { enriched, cacheEntry } = await enrichPhoto(f);
         all.push({ ...enriched, folder });
+        if (cacheEntry) newCacheEntries.push(cacheEntry);
       }
     }
     // Include standalone files
-    for (const fp of store.files) {
+    for (const fp of db.getFiles()) {
       try {
         const stat = await fs.promises.stat(fp);
         const photo = {
@@ -512,11 +577,14 @@ function registerIpcHandlers() {
           size: stat.size, mtime: stat.mtimeMs,
           ext: path.extname(fp).toLowerCase(),
         };
-        const enriched = await enrichPhoto(photo);
+        const { enriched, cacheEntry } = await enrichPhoto(photo);
         all.push({ ...enriched, folder: '__standalone__' });
+        if (cacheEntry) newCacheEntries.push(cacheEntry);
       } catch { /* skip */ }
     }
-    saveStore();
+    if (newCacheEntries.length > 0) {
+      db.upsertCacheBatch(newCacheEntries);
+    }
     return all;
   });
 
@@ -692,9 +760,14 @@ function setupAutoUpdater(win) {
 
 app.whenReady().then(() => {
   initPaths();
-  loadStore();
-  applyNativeTheme(store.settings?.theme || 'dark');
+  applyNativeTheme(db.getSetting('theme') || 'dark');
   registerIpcHandlers();
+
+  // Start file watchers for all persisted folders
+  for (const folder of db.getFolders()) {
+    startWatching(folder);
+  }
+
   const win = createWindow();
   setupAutoUpdater(win);
 
@@ -708,4 +781,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  stopAllWatchers();
+  db.closeDatabase();
 });

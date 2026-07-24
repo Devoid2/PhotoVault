@@ -53,6 +53,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion:        ()   => ipcRenderer.invoke('app:getVersion'),
   getRawExtensions:     ()   => ipcRenderer.invoke('app:getRawExtensions'),
 
+  /* ── File watcher events ──────────────────────────────── */
+  onPhotosAdded:   (cb) => ipcRenderer.on('photos:added',   (_e, photos) => cb(photos)),
+  onPhotosRemoved: (cb) => ipcRenderer.on('photos:removed', (_e, paths)  => cb(paths)),
+
   /* ── Haptic feedback ────────────────────────────────── */
   hapticTap: () => ipcRenderer.send('haptic:tap'),
 });

@@ -198,6 +198,71 @@ const dom = {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   FILE WATCHER EVENTS  (incremental updates from main)
+   ═══════════════════════════════════════════════════════ */
+
+api.onPhotosAdded((photos) => {
+  for (const photo of photos) {
+    // Avoid duplicates in current view
+    if (!state.photos.some(p => p.path === photo.path)) {
+      // Add to current view if we're viewing the affected folder
+      if (state.currentFolder === photo.folder) {
+        state.photos.push(photo);
+      }
+    }
+
+    // Update allPhotos cache if it's loaded
+    if (state.allPhotos.length > 0 && !state.allPhotos.some(p => p.path === photo.path)) {
+      state.allPhotos.push(photo);
+    }
+  }
+
+  refreshCurrentView();
+});
+
+api.onPhotosRemoved((paths) => {
+  const removedSet = new Set(paths);
+
+  state.photos    = state.photos.filter(p => !removedSet.has(p.path));
+  state.allPhotos = state.allPhotos.filter(p => !removedSet.has(p.path));
+
+  // Close meta panel if selected photo was removed
+  if (state.selectedPhoto && removedSet.has(state.selectedPhoto.path)) {
+    closeMetaPanel();
+  }
+
+  // Close fullscreen if current photo was removed
+  if (state.fullscreenIdx >= 0 && state.fullscreenList[state.fullscreenIdx]
+      && removedSet.has(state.fullscreenList[state.fullscreenIdx].path)) {
+    closeFullscreen();
+  }
+
+  refreshCurrentView();
+});
+
+/**
+ * Re-render the current view based on scope/tab state.
+ * Used after incremental photo additions/removals from the file watcher.
+ */
+function refreshCurrentView() {
+  if (state.scope === 'all') {
+    if (state.currentTab === 'folders') {
+      renderFolderGroupedGrid(filterPhotos(state.allPhotos));
+    } else {
+      renderDateGroupedGrid(filterPhotos(state.allPhotos));
+    }
+    dom.photoCount.textContent = `${state.allPhotos.length} photo${state.allPhotos.length !== 1 ? 's' : ''}`;
+  } else if (state.currentFolder) {
+    if (state.currentTab === 'date') {
+      renderDateGroupedGrid(filterPhotos(state.photos));
+    } else {
+      renderPhotoGrid(filterPhotos(state.photos));
+    }
+  }
+  showGrid();
+}
+
+/* ═══════════════════════════════════════════════════════
    AUTO-UPDATE UI
    ═══════════════════════════════════════════════════════ */
 
