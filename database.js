@@ -77,6 +77,8 @@ function prepareStatements() {
       ORDER BY c.name
     `),
     createCollection:  db.prepare('INSERT INTO collections (id, name) VALUES (?, ?)'),
+    /** Used only in migration — fails silently if collection already exists */
+    createCollectionIgnore: db.prepare('INSERT OR IGNORE INTO collections (id, name) VALUES (?, ?)'),
     renameCollection:  db.prepare('UPDATE collections SET name = ? WHERE id = ?'),
     deleteCollection:  db.prepare('DELETE FROM collections WHERE id = ?'),
 
@@ -102,7 +104,10 @@ function prepareStatements() {
         camera    = excluded.camera,
         lens      = excluded.lens
     `),
-    deleteCacheByPrefix: db.prepare('DELETE FROM photo_cache WHERE path LIKE ? || \'%\''),
+    /** Delete all cache entries whose path starts with the given prefix (escaped). */
+    deleteCacheByPrefix: db.prepare(
+      'DELETE FROM photo_cache WHERE path = ? OR path LIKE ? || \'%\' ESCAPE \'\\\''
+    ),
     deleteCacheEntry:    db.prepare('DELETE FROM photo_cache WHERE path = ?'),
 
     /* ── Settings ─────────────────────────────────────── */
@@ -113,6 +118,18 @@ function prepareStatements() {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `),
   };
+}
+
+/* ═══════════════════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Escape SQL LIKE wildcards (`_`, `%`) and the escape character itself (`\`)
+ * so they are treated as literal characters.
+ */
+function escapeLike(value) {
+  return value.replace(/[\\%_]/g, '\\$&');
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -147,10 +164,10 @@ function migrateFromJson(storePath) {
       }
     }
 
-    // Collections
+    // Collections — idempotent via INSERT OR IGNORE
     if (store.collections && typeof store.collections === 'object') {
       for (const [id, col] of Object.entries(store.collections)) {
-        stmts.createCollection.run(id, col.name || 'Untitled');
+        stmts.createCollectionIgnore.run(id, col.name || 'Untitled');
         if (Array.isArray(col.photos)) {
           for (const photoPath of col.photos) {
             stmts.addPhoto.run(id, photoPath);
@@ -230,7 +247,7 @@ function addFolder(folderPath) {
 
 function removeFolder(folderPath) {
   stmts.removeFolder.run(folderPath);
-  stmts.deleteCacheByPrefix.run(folderPath);
+  deleteCacheByPrefix(folderPath);
 }
 
 /* ── Standalone files ─────────────────────────────────── */
@@ -324,8 +341,26 @@ const upsertCacheBatch = (() => {
   };
 })();
 
+/**
+ * Delete all cached metadata for files under a given folder path.
+ *
+ * Escapes SQL LIKE wildcards in the folder path so characters like `_` and `%`
+ * are treated literally. Also adds the OS path separator as a boundary so that
+ * removing cache for `/Users/foo/Photos` does NOT affect `/Users/foo/PhotosOld`.
+ *
+ * The query also deletes an exact match on the folder path itself, in case a
+ * cache entry equals the folder path exactly.
+ *
+ * @param {string} prefix — folder path to delete cache for
+ */
 function deleteCacheByPrefix(prefix) {
-  stmts.deleteCacheByPrefix.run(prefix);
+  const sep = path.sep;
+  // Normalise: ensure the prefix ends with the path separator so the LIKE
+  // pattern only matches files *inside* that folder, not sibling folders with
+  // a similar name. Trim any trailing separator first to avoid double sep.
+  const normalised = prefix.replace(new RegExp(sep + '+$'), '') + sep;
+  const escapedPattern = escapeLike(normalised);
+  stmts.deleteCacheByPrefix.run(prefix, escapedPattern);
 }
 
 function deleteCacheEntry(filePath) {

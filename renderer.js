@@ -211,6 +211,11 @@ api.onPhotosAdded((photos) => {
       }
     }
 
+    // Update standalonePhotos if this is a standalone file
+    if (photo.folder === '__standalone__' && !state.standalonePhotos.some(p => p.path === photo.path)) {
+      state.standalonePhotos.push(photo);
+    }
+
     // Update allPhotos cache if it's loaded
     if (state.allPhotos.length > 0 && !state.allPhotos.some(p => p.path === photo.path)) {
       state.allPhotos.push(photo);
@@ -225,6 +230,7 @@ api.onPhotosRemoved((paths) => {
 
   state.photos    = state.photos.filter(p => !removedSet.has(p.path));
   state.allPhotos = state.allPhotos.filter(p => !removedSet.has(p.path));
+  state.standalonePhotos = state.standalonePhotos.filter(p => !removedSet.has(p.path));
 
   // Close meta panel if selected photo was removed
   if (state.selectedPhoto && removedSet.has(state.selectedPhoto.path)) {
@@ -241,24 +247,52 @@ api.onPhotosRemoved((paths) => {
 });
 
 /**
+ * Return the photo array and render function appropriate for the current
+ * scope / tab / folder state.  This is the ONE source of truth so that
+ * switchTab() and refreshCurrentView() stay in sync.
+ *
+ * @returns {{ photos: Array, render: Function, label: string }}
+ *   - photos:  the photo array to display
+ *   - render:  one of renderPhotoGrid / renderDateGroupedGrid / renderFolderGroupedGrid
+ *   - label:   human-readable count label
+ */
+function getActiveViewState() {
+  if (state.scope === 'all') {
+    const fn = state.currentTab === 'folders' ? renderFolderGroupedGrid : renderDateGroupedGrid;
+    return {
+      photos: state.allPhotos,
+      render: fn,
+      label: `${state.allPhotos.length} photo${state.allPhotos.length !== 1 ? 's' : ''}`,
+    };
+  }
+
+  // Library scope
+  if (state.currentTab === 'date') {
+    // Date tab in library scope ALWAYS shows standalone photos only,
+    // regardless of currentFolder.
+    return {
+      photos: state.standalonePhotos,
+      render: renderDateGroupedGrid,
+      label: `${state.standalonePhotos.length} photo${state.standalonePhotos.length !== 1 ? 's' : ''}`,
+    };
+  }
+
+  // Folders tab in library scope — use the actively selected folder/collection photos
+  return {
+    photos: state.photos,
+    render: renderPhotoGrid,
+    label: `${state.photos.length} photo${state.photos.length !== 1 ? 's' : ''}`,
+  };
+}
+
+/**
  * Re-render the current view based on scope/tab state.
  * Used after incremental photo additions/removals from the file watcher.
  */
 function refreshCurrentView() {
-  if (state.scope === 'all') {
-    if (state.currentTab === 'folders') {
-      renderFolderGroupedGrid(filterPhotos(state.allPhotos));
-    } else {
-      renderDateGroupedGrid(filterPhotos(state.allPhotos));
-    }
-    dom.photoCount.textContent = `${state.allPhotos.length} photo${state.allPhotos.length !== 1 ? 's' : ''}`;
-  } else if (state.currentFolder) {
-    if (state.currentTab === 'date') {
-      renderDateGroupedGrid(filterPhotos(state.photos));
-    } else {
-      renderPhotoGrid(filterPhotos(state.photos));
-    }
-  }
+  const vs = getActiveViewState();
+  vs.render(filterPhotos(vs.photos));
+  dom.photoCount.textContent = vs.label;
   showGrid();
 }
 
@@ -427,18 +461,10 @@ function reapplyFilter() {
   document.querySelectorAll('.filter-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.filter === state.currentFilter)
   );
-  // Re-render current view
-  if (state.scope === 'all' && state.allPhotos.length > 0) {
-    const filtered = filterPhotos(state.allPhotos);
-    if (state.currentTab === 'folders') {
-      renderFolderGroupedGrid(filtered);
-    } else {
-      renderDateGroupedGrid(filtered);
-    }
-  } else if (state.currentTab === 'folders' && state.photos.length > 0) {
-    renderPhotoGrid(filterPhotos(state.photos));
-  } else if (state.currentTab === 'date' && state.allPhotos.length > 0) {
-    renderDateGroupedGrid(filterPhotos(state.allPhotos));
+  // Re-render current view using the same logic as refreshCurrentView
+  const vs = getActiveViewState();
+  if (vs.photos.length > 0) {
+    vs.render(filterPhotos(vs.photos));
   }
 }
 
