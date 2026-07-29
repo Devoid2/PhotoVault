@@ -1,6 +1,5 @@
 <p align="center">
   <h1 align="center">PhotoVault</h1>
-  <p align="center">Minimalist desktop photo storage and organization</p>
 </p>
 
 <p align="center">
