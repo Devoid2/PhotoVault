@@ -300,17 +300,36 @@ function refreshCurrentView() {
    AUTO-UPDATE UI
    ═══════════════════════════════════════════════════════ */
 
+/**
+ * Map internal state machine state to a human-readable label for the settings view.
+ */
+function updateStatusLabel(stateCode) {
+  const map = {
+    idle:        'Checking…',
+    checking:    'Checking…',
+    available:   'Update available',
+    downloading: 'Downloading…',
+    ready:       'Restart to update',
+    error:       'Update failed',
+  };
+  return map[stateCode] || 'Unknown';
+}
+
 function setUpdateStatus(status, text) {
   state.updateStatus = status;
   const el = dom.aboutUpdate;
   el.textContent = text;
   el.className = 'settings-about-value';
-  if (status === 'up-to-date')   el.classList.add('status-ok');
-  else if (status === 'checking') el.classList.add('status-checking');
-  else if (status === 'error')    el.classList.add('status-error');
+  if (status === 'idle' || status === 'up-to-date')  el.classList.add('status-ok');
+  else if (status === 'checking')                     el.classList.add('status-checking');
+  else if (status === 'error')                         el.classList.add('status-error');
   else if (status === 'available' || status === 'ready') el.classList.add('status-available');
+  else if (status === 'downloading')                   el.classList.add('status-checking');
 }
 
+/**
+ * Tie the update-bar UI directly to the main process state machine.
+ */
 function setupUpdateBar() {
   const bar       = $('#update-bar');
   const text      = $('#update-text');
@@ -320,60 +339,105 @@ function setupUpdateBar() {
   const progFill  = $('#update-progress-fill');
   const progPct   = $('#update-percent');
 
-  let updateState = 'idle'; // idle | available | downloading | ready
+  /**
+   * Refresh the bar based on a machine state code.
+   * @param {'idle'|'checking'|'available'|'downloading'|'ready'|'error'} stateCode
+   * @param {object} [info] – update info when available
+   */
+  function updateBar(stateCode, info) {
+    switch (stateCode) {
+      case 'checking': {
+        // Only show bar if user triggered the check (we don't show bar on idle background check)
+        if (bar.style.display === 'block') {
+          text.textContent = 'Checking for updates…';
+          actionBtn.style.display = 'none';
+          progWrap.style.display = 'none';
+        }
+        break;
+      }
+      case 'available': {
+        text.textContent = info
+          ? `Version ${info.version} is available`
+          : 'Update available';
+        actionBtn.textContent = 'Download';
+        actionBtn.style.display = '';
+        actionBtn.dataset.action = 'download';
+        progWrap.style.display = 'none';
+        bar.style.display = 'block';
+        break;
+      }
+      case 'downloading': {
+        text.textContent = 'Downloading update…';
+        actionBtn.style.display = 'none';
+        progWrap.style.display = 'flex';
+        break;
+      }
+      case 'ready': {
+        text.textContent = 'Update ready — restart to apply';
+        progWrap.style.display = 'none';
+        actionBtn.style.display = '';
+        actionBtn.textContent = 'Restart';
+        actionBtn.dataset.action = 'install';
+        break;
+      }
+      case 'error': {
+        // If bar is visible, assume it was a failed download; show retry
+        if (bar.style.display === 'block') {
+          text.textContent = 'Download failed — try again';
+          actionBtn.textContent = 'Retry';
+          actionBtn.style.display = '';
+          actionBtn.dataset.action = 'download';
+          progWrap.style.display = 'none';
+        }
+        break;
+      }
+      // idle — do nothing (bar stays hidden unless user triggered something)
+    }
+    setUpdateStatus(stateCode, updateStatusLabel(stateCode));
+  }
 
-  api.onUpdateAvailable((info) => {
-    updateState = 'available';
-    text.textContent = `Version ${info.version} is available`;
-    actionBtn.textContent = 'Download';
-    actionBtn.style.display = '';
-    progWrap.style.display = 'none';
-    bar.style.display = 'block';
-    setUpdateStatus('available', `v${info.version} available`);
+  // ── Listen for state machine broadcasts from main process ──
+  api.onUpdateStateChanged(({ state: stateCode, info }) => {
+    updateBar(stateCode, info);
   });
 
-  api.onUpdateNotAvailable(() => {
-    setUpdateStatus('up-to-date', 'Up to date');
+  // ── Fallback: legacy events (for backward compatibility) ──
+  api.onUpdateAvailable((info) => {
+    updateBar('available', info);
   });
 
   api.onUpdateProgress((info) => {
-    updateState = 'downloading';
-    text.textContent = 'Downloading update…';
-    actionBtn.style.display = 'none';
-    progWrap.style.display = 'flex';
+    // Update the progress bar fill
     progFill.style.width = info.percent + '%';
     progPct.textContent = info.percent + '%';
     setUpdateStatus('downloading', `Downloading ${info.percent}%`);
   });
 
-  api.onUpdateDownloaded(() => {
-    updateState = 'ready';
-    text.textContent = 'Update ready — restart to apply';
-    progWrap.style.display = 'none';
-    actionBtn.style.display = '';
-    actionBtn.textContent = 'Restart';
-    setUpdateStatus('ready', 'Restart to update');
+  api.onUpdateNotAvailable(() => {
+    setUpdateStatus('idle', 'Up to date');
   });
 
-  api.onUpdateError((msg) => {
-    if (updateState === 'downloading' || text.textContent === 'Starting download…') {
-      // Download failed — let user retry
-      updateState = 'available';
-      text.textContent = 'Download failed — try again';
-      actionBtn.textContent = 'Retry';
-      actionBtn.style.display = '';
-      progWrap.style.display = 'none';
-    }
-    setUpdateStatus('error', 'Update failed');
-    console.error('Update error:', msg);
-  });
+  // ── Action button: Download or Install ──
+  actionBtn.addEventListener('click', async () => {
+    const action = actionBtn.dataset.action;
 
-  actionBtn.addEventListener('click', () => {
-    if (updateState === 'available') {
-      api.downloadUpdate();
+    if (action === 'download') {
+      // Show immediate feedback
       text.textContent = 'Starting download…';
       actionBtn.style.display = 'none';
-    } else if (updateState === 'ready') {
+      progWrap.style.display = 'flex';
+      progFill.style.width = '0%';
+      progPct.textContent = '0%';
+      setUpdateStatus('downloading', 'Starting download…');
+
+      try {
+        await api.downloadUpdate();
+        // Success — state machine will broadcast 'ready'
+      } catch (err) {
+        // Error already handled by main process and broadcast via onUpdateError
+        console.error('Download failed:', err.message);
+      }
+    } else if (action === 'install') {
       api.installUpdate();
     }
   });

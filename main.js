@@ -508,6 +508,248 @@ async function flushWatcherBuffers() {
 }
 
 /* ═══════════════════════════════════════════════════════
+   AUTO-UPDATE STATE MANAGER
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * @typedef {'idle'|'checking'|'available'|'downloading'|'ready'|'error'} UpdaterStateName
+ *
+ * Centralised state machine for the auto-updater.
+ * Prevents race conditions between multiple check/download calls.
+ */
+const updaterState = {
+  /** @type {UpdaterStateName} */
+  _state: 'idle',
+  _updateInfo: null,       // info object from 'update-available' event
+  _autoUpdater: null,      // lazy-required autoUpdater reference
+  _busyCheck: false,       // true while checkForUpdates() is in-flight
+  _busyDownload: false,    // true while downloadUpdate() is in-flight
+  _win: null,              // BrowserWindow to forward events to
+
+  /**
+   * Send an IPC event to the renderer (if window exists).
+   * @param {string} channel
+   * @param {*} [data]
+   */
+  _send(channel, data) {
+    if (this._win && !this._win.isDestroyed()) {
+      this._win.webContents.send(channel, data);
+    }
+  },
+
+  /** Broadcast current state to the renderer */
+  _broadcast() {
+    this._send('update:stateChanged', {
+      state: this._state,
+      info:  this._updateInfo,
+    });
+  },
+
+  /**
+   * Transition to a new state and notify the renderer.
+   * @param {UpdaterStateName} newState
+   * @param {object} [info] – optional update info
+   */
+  setState(newState, info) {
+    this._state = newState;
+    if (info) this._updateInfo = info;
+    this._broadcast();
+  },
+
+  get state() {
+    return this._state;
+  },
+
+  get updateInfo() {
+    return this._updateInfo;
+  },
+
+  /** @returns {import('electron-updater').AutoUpdater} */
+  getAutoUpdater() {
+    if (!this._autoUpdater) {
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.autoDownload = false;
+      autoUpdater.autoInstallOnAppQuit = true;
+      autoUpdater.requestHeaders = { 'Cache-Control': 'no-cache' };
+      this._autoUpdater = autoUpdater;
+    }
+    return this._autoUpdater;
+  },
+
+  /**
+   * Perform a single check for updates.
+   * Returns `true` if an update is available, `false` if up-to-date,
+   * throws on network/timeout errors.
+   */
+  async check() {
+    if (this._busyCheck) {
+      throw new Error('Update check already in progress');
+    }
+
+    const au = this.getAutoUpdater();
+    this._busyCheck = true;
+
+    let resolved = false;
+    let resultAvailable = false;
+
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        au.removeListener('update-available', onAvailable);
+        au.removeListener('update-not-available', onNotAvailable);
+        au.removeListener('error', onError);
+      };
+
+      const onAvailable = (info) => {
+        if (resolved) return;
+        resolved = true;
+        this._updateInfo = {
+          version: info.version,
+          releaseDate: info.releaseDate,
+        };
+        resultAvailable = true;
+        cleanup();
+        this._busyCheck = false;
+        resolve(true);
+      };
+
+      const onNotAvailable = () => {
+        if (resolved) return;
+        resolved = true;
+        this._updateInfo = null;
+        resultAvailable = false;
+        cleanup();
+        this._busyCheck = false;
+        resolve(false);
+      };
+
+      const onError = (err) => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        this._busyCheck = false;
+        reject(err);
+      };
+
+      // Attach listeners before calling checkForUpdates to avoid race
+      au.once('update-available', onAvailable);
+      au.once('update-not-available', onNotAvailable);
+      au.once('error', onError);
+
+      // Ensure we hang up after timeout
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          au.removeListener('update-available', onAvailable);
+          au.removeListener('update-not-available', onNotAvailable);
+          au.removeListener('error', onError);
+          this._busyCheck = false;
+          reject(new Error('Update check timed out'));
+        }
+      }, 15000);
+
+      // Also intercept the original 'onAvailable' to ensure cleanup
+      const origOnAvailable = au.listeners('update-available').pop();
+      au.on('update-available', (info) => {
+        clearTimeout(timer);
+      });
+
+      au.checkForUpdates().catch((err) => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          clearTimeout(timer);
+          this._busyCheck = false;
+          reject(err);
+        }
+      });
+    });
+  },
+
+  /**
+   * Download the previously found update.
+   * Must be called only after check() returned `true` or state === 'available'.
+   */
+  async download() {
+    if (this._busyDownload) {
+      throw new Error('Download already in progress');
+    }
+
+    const au = this.getAutoUpdater();
+    this._busyDownload = true;
+
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        au.removeListener('download-progress', onProgress);
+        au.removeListener('update-downloaded', onDownloaded);
+        au.removeListener('error', onError);
+      };
+
+      const onProgress = (progress) => {
+        this._send('update:progress', {
+          percent: Math.round(progress.percent),
+        });
+      };
+
+      const onDownloaded = () => {
+        cleanup();
+        this._busyDownload = false;
+        this.setState('ready');
+        resolve();
+      };
+
+      const onError = (err) => {
+        cleanup();
+        this._busyDownload = false;
+        reject(err);
+      };
+
+      au.on('download-progress', onProgress);
+      au.once('update-downloaded', onDownloaded);
+      au.once('error', onError);
+
+      const timer = setTimeout(() => {
+        cleanup();
+        this._busyDownload = false;
+        reject(new Error('Download timed out'));
+      }, 120000);
+
+      au.downloadUpdate().catch((err) => {
+        cleanup();
+        clearTimeout(timer);
+        this._busyDownload = false;
+        reject(err);
+      });
+    });
+  },
+
+  /** Install the downloaded update. */
+  install() {
+    const au = this.getAutoUpdater();
+    au.quitAndInstall(false, true);
+  },
+
+  /** Wire up autoUpdater lifecycle events that the renderer relies on. */
+  setupListeners(win) {
+    this._win = win;
+    const au = this.getAutoUpdater();
+
+    // We still listen for update-available and update-not-available
+    // for the initial passive check that electron-updater does on startup.
+    // But the state machine's check() method handles these events too.
+    // So we DON'T re-register them here to avoid double-firing.
+    // Instead, we just wire the 'error' event for unexpected failures.
+    au.on('error', (err) => {
+      console.error('Auto-updater error:', err.message);
+      this._send('update:error', err.message);
+      if (this.state !== 'downloading') {
+        this.setState('error');
+      }
+    });
+  },
+};
+
+/* ═══════════════════════════════════════════════════════
    IPC HANDLERS
    ═══════════════════════════════════════════════════════ */
 
@@ -750,27 +992,71 @@ function registerIpcHandlers() {
   });
 
   /* ── Auto-update controls ──────────────────────────── */
-  ipcMain.handle('update:download', async () => {
-    const { autoUpdater } = require('electron-updater');
+
+  /**
+   * Manually check for updates.
+   * Returns `{ available: true, info: ... }` or `{ available: false }`.
+   */
+  ipcMain.handle('update:check', async () => {
+    updaterState.setState('checking');
+
     try {
-      const downloadPromise = autoUpdater.downloadUpdate();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Download timed out')), 120000)
-      );
-      await Promise.race([downloadPromise, timeoutPromise]);
+      const available = await updaterState.check();
+      if (available) {
+        updaterState.setState('available');
+        return { available: true, info: updaterState.updateInfo };
+      } else {
+        updaterState.setState('idle');
+        return { available: false };
+      }
+    } catch (err) {
+      console.error('Update check failed:', err.message);
+      updaterState.setState('error');
+      throw err;
+    }
+  });
+
+  /**
+   * Download an available update.
+   * If no update has been found yet, it first performs a check, then downloads.
+   */
+  ipcMain.handle('update:download', async () => {
+    // If we're in idle state (no prior check), run check first
+    if (updaterState.state === 'idle' || updaterState.state === 'error') {
+      updaterState.setState('checking');
+      try {
+        const available = await updaterState.check();
+        if (!available) {
+          updaterState.setState('idle');
+          throw new Error('No update available');
+        }
+      } catch (err) {
+        // If timeout or network error, propagate to renderer
+        updaterState.setState('error');
+        throw err;
+      }
+    }
+
+    // Now we must be in 'available' state or something went wrong
+    if (updaterState.state !== 'available') {
+      throw new Error('No update available to download (state: ' + updaterState.state + ')');
+    }
+
+    updaterState.setState('downloading');
+
+    try {
+      await updaterState.download();
+      // setState('ready') is called inside download() on success
     } catch (err) {
       console.error('Download failed:', err.message);
-      // Forward error to renderer so UI can recover
-      const wins = BrowserWindow.getAllWindows();
-      if (wins.length > 0) {
-        wins[0].webContents.send('update:error', err.message);
-      }
+      // Go back to 'available' so user can retry
+      updaterState.setState('available');
+      throw err;
     }
   });
 
   ipcMain.handle('update:install', () => {
-    const { autoUpdater } = require('electron-updater');
-    autoUpdater.quitAndInstall(false, true);
+    updaterState.install();
   });
 
   /* ── Haptic feedback (macOS trackpad) ──────────────── */
@@ -815,69 +1101,27 @@ function createWindow() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   AUTO-UPDATER
+   AUTO-UPDATER SETUP
    ═══════════════════════════════════════════════════════ */
 
 function setupAutoUpdater(win) {
   try {
-    const { autoUpdater } = require('electron-updater');
+    // Wire the state machine's listeners to the BrowserWindow
+    updaterState.setupListeners(win);
 
-    autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
-    // Prevent hanging on slow/unreachable servers
-    autoUpdater.requestHeaders = { 'Cache-Control': 'no-cache' };
-
-    autoUpdater.on('update-available', (info) => {
-      win.webContents.send('update:available', {
-        version: info.version,
-        releaseDate: info.releaseDate,
-      });
-    });
-
-    autoUpdater.on('update-not-available', () => {
-      win.webContents.send('update:not-available');
-    });
-
-    autoUpdater.on('download-progress', (progress) => {
-      win.webContents.send('update:progress', {
-        percent: Math.round(progress.percent),
-      });
-    });
-
-    autoUpdater.on('update-downloaded', () => {
-      win.webContents.send('update:downloaded');
-    });
-
-    autoUpdater.on('error', (err) => {
-      console.error('Auto-updater error:', err.message);
-      win.webContents.send('update:error', err.message);
-    });
-
-    // Manual check handler
-    ipcMain.handle('update:check', async () => {
-      try {
-        const checkPromise = autoUpdater.checkForUpdates();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Update check timed out')), 15000)
-        );
-        await Promise.race([checkPromise, timeoutPromise]);
-      } catch (err) {
-        console.error('Update check failed:', err.message);
-        win.webContents.send('update:error', err.message);
-      }
-    });
-
-    // Check for updates after a short delay (with timeout)
+    // Check for updates after a short delay
     setTimeout(async () => {
       try {
-        const checkPromise = autoUpdater.checkForUpdates();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Update check timed out')), 15000)
-        );
-        await Promise.race([checkPromise, timeoutPromise]);
+        const available = await updaterState.check();
+        if (available) {
+          updaterState.setState('available');
+        }
+        // If not available, stay 'idle' — user can manually check later
       } catch (err) {
-        console.error('Auto-update check failed:', err.message);
-        win.webContents.send('update:error', err.message);
+        // Eat the error — the user can manually check later
+        console.error('Initial auto-update check failed:', err.message);
+        // Don't set error state for initial background check
+        updaterState.setState('idle');
       }
     }, 5000);
   } catch (err) {

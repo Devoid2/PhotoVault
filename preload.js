@@ -41,14 +41,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow:    () => ipcRenderer.send('window:close'),
 
   /* ── Auto-update ────────────────────────────────────── */
-  onUpdateAvailable:  (cb) => ipcRenderer.on('update:available',  (_e, info) => cb(info)),
-  onUpdateProgress:   (cb) => ipcRenderer.on('update:progress',   (_e, info) => cb(info)),
-  onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', () => cb()),
-  downloadUpdate:     ()   => ipcRenderer.invoke('update:download'),
-  installUpdate:      ()   => ipcRenderer.invoke('update:install'),
-  onUpdateNotAvailable: (cb) => ipcRenderer.on('update:not-available', () => cb()),
-  onUpdateError:        (cb) => ipcRenderer.on('update:error', (_e, msg) => cb(msg)),
-  checkForUpdate:       ()   => ipcRenderer.invoke('update:check'),
+  onUpdateStateChanged: (cb) => ipcRenderer.on('update:stateChanged', (_e, data) => cb(data)),
+  onUpdateAvailable:    (cb) => ipcRenderer.on('update:available',     (_e, info) => cb(info)),
+  onUpdateProgress:     (cb) => ipcRenderer.on('update:progress',      (_e, info) => cb(info)),
+  onUpdateDownloaded:   (cb) => ipcRenderer.on('update:downloaded',    () => cb()),
+  downloadUpdate:       ()   => ipcRenderer.invoke('update:download'),
+  installUpdate:        ()   => ipcRenderer.invoke('update:install'),
+  onUpdateNotAvailable:   (cb) => ipcRenderer.on('update:not-available', () => cb()),
+  onUpdateError:          (cb) => ipcRenderer.on('update:error', (_e, msg) => cb(msg)),
+  checkForUpdate:         ()   => ipcRenderer.invoke('update:check'),
 
   getAppVersion:        ()   => ipcRenderer.invoke('app:getVersion'),
   getRawExtensions:     ()   => ipcRenderer.invoke('app:getRawExtensions'),
