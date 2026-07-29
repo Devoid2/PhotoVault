@@ -9,24 +9,27 @@ permissions:
   contents: write
 
 jobs:
-  # ── Create a draft release BEFORE builds (so electron-builder can upload assets) ──
   create-release:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - name: Create draft release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/checkout@v4
         with:
-          draft: true
-          generate_release_notes: false
-          name: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Create draft release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
+          export CHANGELOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* %s")
+          export REPO="${{ github.repository }}"
+          export TAG="${{ github.ref_name }}"
+          export MODE=create
+          python3 build/release.py
 
-  # ── Build per platform ──
   build:
     needs: [create-release]
-    if: always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped')
+    if: always() && (needs.create-release.result == 'success')
     strategy:
       fail-fast: false
       matrix:
@@ -35,89 +38,41 @@ jobs:
             build_args: --mac
           - os: windows-latest
             build_args: --win
-
     runs-on: ${{ matrix.os }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Compile haptic binary (macOS only)
-        if: runner.os == 'macOS'
+      - run: npm ci
+      - if: runner.os == 'macOS'
         run: swiftc build/haptic.swift -o build/haptic
-
-      - name: Build & Publish (tagged release)
+      - name: Build & Publish
         if: startsWith(github.ref, 'refs/tags/v')
         run: npx electron-builder ${{ matrix.build_args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build (branch push)
         if: "!startsWith(github.ref, 'refs/tags/v')"
         run: npx electron-builder ${{ matrix.build_args }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload artifacts
-        if: "!startsWith(github.ref, 'refs/tags/v')"
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.os }}
-          path: |
-            dist/*.dmg
-            dist/*.exe
-          if-no-files-found: ignore
-
-  # ── Update release notes & publish (after all builds succeed) ──
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout with full history
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Build and publish release
-        shell: bash
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
-
-          # Build body
-          {
-            echo "## What's Changed"
-            echo ""
-            git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* %s"
-            echo ""
-            echo ""
-            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ github.ref_name }}"
-            echo ""
-            echo "### Downloads"
-            echo "- [macOS (DMG)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PhotoVault-${{ github.ref_name }}-universal.dmg)"
-            echo "- [Windows (Setup)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PhotoVault-Setup-${{ github.ref_name }}.exe)"
-          } > /tmp/body.md
-
-          # Convert to JSON body with jq
-          BODY=$(jq -Rs '.' < /tmp/body.md)
-
-          # Get release ID
-          RELEASE_ID=$(curl -s \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
-            | jq -r '.id')
-
-          # Update release
-          curl -s -X PATCH \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" \
-            -d "{\"body\": $BODY, \"draft\": false}"
+          export PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
+          export CHANGELOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* %s")
+          export REPO="${{ github.repository }}"
+          export TAG="${{ github.ref_name }}"
+          export MODE=publish
+          python3 build/release.py
