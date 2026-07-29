@@ -17,14 +17,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: Create draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          export PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
-          export CHANGELOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* %s")
           export REPO="${{ github.repository }}"
           export TAG="${{ github.ref_name }}"
-          export MODE=create
+          export PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
+          export CHANGELOG=$(git log "$PREV_TAG..$TAG" --pretty=format:"* %s")
+          export GH_TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          export MODE="create"
           python3 build/release.py
 
   build:
@@ -52,11 +51,6 @@ jobs:
         run: npx electron-builder ${{ matrix.build_args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build (branch push)
-        if: "!startsWith(github.ref, 'refs/tags/v')"
-        run: npx electron-builder ${{ matrix.build_args }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -67,12 +61,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Publish release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          export PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
-          export CHANGELOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* %s")
           export REPO="${{ github.repository }}"
           export TAG="${{ github.ref_name }}"
-          export MODE=publish
+          export PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
+          export CHANGELOG=$(git log "$PREV_TAG..$TAG" --pretty=format:"* %s")
+          export GH_TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          export MODE="publish"
           python3 build/release.py
