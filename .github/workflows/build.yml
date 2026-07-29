@@ -87,36 +87,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build changelog
-        id: changelog
+      - name: Build and publish release
+        shell: bash
         run: |
           PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
-          CHANGELOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* %s")
+
+          # Build body
           {
-            echo 'changelog<<EOF'
             echo "## What's Changed"
             echo ""
-            echo "$CHANGELOG"
+            git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* %s"
+            echo ""
             echo ""
             echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ github.ref_name }}"
             echo ""
             echo "### Downloads"
             echo "- [macOS (DMG)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PhotoVault-${{ github.ref_name }}-universal.dmg)"
             echo "- [Windows (Setup)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PhotoVault-Setup-${{ github.ref_name }}.exe)"
-            EOF
-          } >> $GITHUB_OUTPUT
+          } > /tmp/body.md
 
-      - name: Update release notes & publish
-        run: |
-          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          # Convert to JSON body with jq
+          BODY=$(jq -Rs '.' < /tmp/body.md)
+
+          # Get release ID
+          RELEASE_ID=$(curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+            | jq -r '.id')
 
-          # Escape the changelog for JSON
-          BODY=$(python3 -c "import json; print(json.dumps('''${{ steps.changelog.outputs.changelog }}'''))")
-
+          # Update release
           curl -s -X PATCH \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" \
-            -d '{"body": '"$BODY"', "draft": false}'
+            -d "{\"body\": $BODY, \"draft\": false}"
