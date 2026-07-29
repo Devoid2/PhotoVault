@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-import json, os, urllib.request, urllib.error
+import json
+import os
+import urllib.error
+import urllib.request
 
 repo = os.environ['REPO']
 tag = os.environ['TAG']
@@ -19,65 +22,74 @@ body = (
 headers = {
     "Authorization": f"token {token}",
     "Accept": "application/vnd.github.v3+json",
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
 }
 
 mode = os.environ.get('MODE', 'create')
 
-if mode == 'create':
-    # Delete existing release if any, then create new one (draft, so electron-builder can upload)
-    req = urllib.request.Request(
-        f"https://api.github.com/repos/{repo}/releases/tags/{tag}",
-        headers=headers
-    )
+
+def request_json(url, method='GET', data=None):
+    req = urllib.request.Request(url, method=method, data=data, headers=headers)
     try:
-        resp = urllib.request.urlopen(req)
-        existing = json.loads(resp.read())
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+
+if mode == 'create':
+    existing = request_json(f"https://api.github.com/repos/{repo}/releases/tags/{tag}")
+    if existing:
         rid = existing['id']
         print(f"Deleting existing release {rid}...")
-        del_req = urllib.request.Request(
+        req = urllib.request.Request(
             f"https://api.github.com/repos/{repo}/releases/{rid}",
             method='DELETE',
-            headers=headers
+            headers=headers,
         )
-        urllib.request.urlopen(del_req)
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            raise
+        with urllib.request.urlopen(req):
+            pass
 
-    # Create draft release
     payload = json.dumps({
         "tag_name": tag,
         "name": tag,
         "draft": True,
-        "body": body
+        "body": body,
     })
-    req = urllib.request.Request(
+    created = request_json(
         f"https://api.github.com/repos/{repo}/releases",
-        method='POST', data=payload.encode(), headers=headers
+        method='POST',
+        data=payload.encode(),
     )
-    resp = urllib.request.urlopen(req)
-    created = json.loads(resp.read())
     print(f"Draft release created: {created['html_url']}")
 
 elif mode == 'publish':
-    # Get release, update body and publish (draft: False)
-    req = urllib.request.Request(
-        f"https://api.github.com/repos/{repo}/releases/tags/{tag}",
-        headers=headers
-    )
-    resp = urllib.request.urlopen(req)
-    release = json.loads(resp.read())
-    rid = release['id']
+    release = request_json(f"https://api.github.com/repos/{repo}/releases/tags/{tag}")
+    if not release:
+        payload = json.dumps({
+            "tag_name": tag,
+            "name": tag,
+            "draft": False,
+            "body": body,
+        })
+        created = request_json(
+            f"https://api.github.com/repos/{repo}/releases",
+            method='POST',
+            data=payload.encode(),
+        )
+        print(f"Release created: {created['html_url']}")
+        raise SystemExit(0)
 
+    rid = release['id']
     payload = json.dumps({
         "body": body,
-        "draft": False
+        "draft": False,
     })
-    req = urllib.request.Request(
+    updated = request_json(
         f"https://api.github.com/repos/{repo}/releases/{rid}",
-        method='PATCH', data=payload.encode(), headers=headers
+        method='PATCH',
+        data=payload.encode(),
     )
-    resp = urllib.request.urlopen(req)
-    updated = json.loads(resp.read())
     print(f"Release published: {updated['html_url']}")
