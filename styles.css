@@ -1337,7 +1337,7 @@ html, body {
 }
 
 /* ═══════════════════════════════════════════════════════
-   FULLSCREEN VIEWER
+   FULLSCREEN VIEWER  —  Smooth Morph / Zoom
    ═══════════════════════════════════════════════════════ */
 
 .fullscreen-overlay {
@@ -1346,19 +1346,46 @@ html, body {
   z-index: 1000;
   background: rgba(0, 0, 0, 0.95);
   backdrop-filter: blur(30px);
-  display: none;
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 0.25s ease;
+  visibility: hidden;
+  pointer-events: none;
+
+  /* Morph animation: starts at card rect, grows to fullscreen */
+  border-radius: 12px;
+  overflow: hidden;
+  transform-origin: top left;
+  will-change: transform, opacity, border-radius;
+
+  transition:
+    transform  0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity    0.25s ease,
+    border-radius 0.38s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .fullscreen-overlay.visible {
-  display: flex;
+  visibility: visible;
+  pointer-events: all;
+  border-radius: 0;
+}
+
+/* ── Backdrop fade (separate) ── */
+.fullscreen-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(30px);
+  opacity: 0;
+  transition: opacity 0.3s ease 0.02s;
+  pointer-events: none;
+}
+.fullscreen-overlay.visible::before {
   opacity: 1;
 }
 
-/* Buttons */
+/* ── Buttons (appear with delay) ── */
 .fs-btn {
   position: absolute;
   background: rgba(255, 255, 255, 0.06);
@@ -1371,9 +1398,23 @@ html, body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: all 0.22s ease;
   z-index: 10;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease,
+    background 0.22s ease,
+    color 0.22s ease;
 }
+.fullscreen-overlay.visible .fs-btn {
+  opacity: 1;
+  transform: translateY(0);
+}
+.fullscreen-overlay.visible .fs-btn:nth-child(2) { transition-delay: 0.08s; }
+.fullscreen-overlay.visible .fs-btn:nth-child(3) { transition-delay: 0.10s; }
+.fullscreen-overlay.visible .fs-btn:nth-child(4) { transition-delay: 0.12s; }
 .fs-btn:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
@@ -1387,31 +1428,78 @@ html, body {
 .fs-prev {
   left: 20px;
   top: 50%;
-  transform: translateY(-50%);
+  margin-top: -20px;
 }
 .fs-next {
   right: 20px;
   top: 50%;
-  transform: translateY(-50%);
+  margin-top: -20px;
 }
 
-/* Image */
+/* ── Image container ── */
 .fs-image-container {
   max-width: calc(100vw - 120px);
   max-height: calc(100vh - 100px);
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  z-index: 1;
 }
+
+/* ── Image itself: fade-in + scale + blur reveal ── */
 .fs-image {
   max-width: 100%;
   max-height: calc(100vh - 100px);
   object-fit: contain;
   border-radius: 2px;
   box-shadow: 0 8px 60px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: scale(0.94);
+  filter: blur(8px);
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.35s ease;
+  will-change: transform, opacity, filter;
+}
+.fullscreen-overlay.visible .fs-image {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+  transition-delay: 0.10s;
 }
 
-/* Info bar */
+/* ── Navigation slide animations ── */
+.fs-image-container.slide-out-left {
+  animation: slideOutLeft 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.fs-image-container.slide-in-right {
+  animation: slideInRight 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.fs-image-container.slide-out-right {
+  animation: slideOutRight 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.fs-image-container.slide-in-left {
+  animation: slideInLeft 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideOutLeft {
+  to { opacity: 0; transform: translateX(-40px) scale(0.96); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(40px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes slideOutRight {
+  to { opacity: 0; transform: translateX(40px) scale(0.96); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-40px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+/* ── Info bar ── */
 .fs-info {
   position: absolute;
   bottom: 20px;
@@ -1420,6 +1508,49 @@ html, body {
   gap: 16px;
   font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.4);
+  z-index: 1;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.fullscreen-overlay.visible .fs-info {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 0.14s;
+}
+
+/* ── RAW file — preview unavailable placeholder ── */
+.fs-image-container.raw-unavailable {
+  width: 400px;
+  height: 300px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 14px;
+  text-align: center;
+  padding: 40px;
+  position: relative;
+}
+
+.fs-image-container.raw-unavailable::before {
+  content: '⧇';
+  font-size: 48px;
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.15;
+}
+
+.fs-image-container.raw-unavailable .fs-image {
+  display: none;
 }
 
 /* ═══════════════════════════════════════════════════════

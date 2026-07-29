@@ -10,9 +10,12 @@ const db       = require('./database');
    ═══════════════════════════════════════════════════════ */
 
 const SUPPORTED_EXTENSIONS = new Set([
-  '.jpg', '.jpeg', '.png', '.cr2', '.cr3', '.heic', '.heif',
+  '.jpg', '.jpeg', '.png',
+  '.cr2', '.cr3',
+  '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf',
+  '.heic', '.heif',
 ]);
-const RAW_EXTENSIONS = new Set(['.cr2', '.cr3']);
+const RAW_EXTENSIONS = new Set(['.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf']);
 const HEIF_EXTENSIONS = new Set(['.heic', '.heif']);
 
 let THUMBNAIL_DIR;
@@ -136,6 +139,41 @@ function thumbHash(filePath) {
   return crypto.createHash('md5').update(filePath).digest('hex');
 }
 
+/** Fallback: generate a simple placeholder thumbnail for unsupported image types */
+async function generatePlaceholderThumbnail(thumbPath, ext) {
+  const sharpM = await getSharp();
+  const label = ext ? ext.replace('.', '').toUpperCase() : 'RAW';
+  try {
+    // Create a small dark placeholder with the format label
+    const svg = `<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+      <rect width="200" height="200" fill="#1a1a1a"/>
+      <text x="100" y="100" text-anchor="middle" dominant-baseline="central"
+            font-family="-apple-system, BlinkMacSystemFont, sans-serif"
+            font-size="18" font-weight="600" fill="#555">${label}</text>
+      <text x="100" y="128" text-anchor="middle" dominant-baseline="central"
+            font-family="-apple-system, BlinkMacSystemFont, sans-serif"
+            font-size="10" fill="#3a3a3a">Preview unavailable</text>
+    </svg>`;
+    await sharpM(Buffer.from(svg))
+      .webp({ quality: 60 })
+      .toFile(thumbPath);
+    return thumbPath;
+  } catch {
+    return null;
+  }
+}
+
+/** Extract embedded JPEG preview from a RAW file via exifr */
+async function extractRawPreview(filePath) {
+  const lib = await getExifr();
+  try {
+    const thumbBuf = await lib.thumbnail(filePath);
+    return thumbBuf || null;
+  } catch {
+    return null;
+  }
+}
+
 async function generateThumbnail(filePath, size = 480) {
   const hash      = thumbHash(filePath);
   const thumbPath = path.join(THUMBNAIL_DIR, `${hash}.webp`);
@@ -152,18 +190,25 @@ async function generateThumbnail(filePath, size = 480) {
   let input;
 
   if (RAW_EXTENSIONS.has(ext)) {
-    // For RAW files — extract embedded JPEG preview
-    const lib = await getExifr();
-    try {
-      const thumbBuf = await lib.thumbnail(filePath);
-      if (thumbBuf) {
-        input = thumbBuf;
-      } else {
-        // Fallback: try reading the file directly with sharp
-        input = filePath;
+    // For RAW files — extract embedded JPEG preview (main approach)
+    const previewBuf = await extractRawPreview(filePath);
+    if (previewBuf) {
+      input = previewBuf;
+    } else {
+      // No embedded preview — try sharp directly as last resort
+      // (may work for DNG, some NEF, etc. if libvips has libraw support)
+      try {
+        // Quick test if sharp can even open this file
+        const meta = await sharpM(filePath).metadata();
+        if (meta && meta.width) {
+          input = filePath;
+        } else {
+          throw new Error('No metadata');
+        }
+      } catch {
+        // Sharp can't read this RAW — generate placeholder
+        return await generatePlaceholderThumbnail(thumbPath, ext);
       }
-    } catch {
-      input = filePath;
     }
   } else if (HEIF_EXTENSIONS.has(ext)) {
     // HEIC/HEIF — try sharp first (libvips with libheif), fallback to heic-convert
@@ -197,11 +242,18 @@ async function generateThumbnail(filePath, size = 480) {
         return thumbPath;
       } catch (heicErr) {
         console.error(`Thumbnail HEIC fallback failed for ${filePath}:`, heicErr.message);
-        return null;
+        return await generatePlaceholderThumbnail(thumbPath, ext);
       }
     }
+
+    // If RAW with preview buffer failed due to corrupt data, try placeholder
+    if (RAW_EXTENSIONS.has(ext)) {
+      console.error(`Thumbnail RAW preview processing failed for ${filePath}:`, err.message);
+      return await generatePlaceholderThumbnail(thumbPath, ext);
+    }
+
     console.error(`Thumbnail failed for ${filePath}:`, err.message);
-    return null;
+    return await generatePlaceholderThumbnail(thumbPath, ext);
   }
 }
 
@@ -251,7 +303,7 @@ async function getFullImage(filePath) {
     return filePath; // browser can display JPEG/PNG directly
   }
 
-  // For RAW – extract/convert a large preview
+  // For RAW – extract embedded JPEG preview (main approach)
   const hash     = thumbHash(filePath);
   const prevPath = path.join(THUMBNAIL_DIR, `${hash}_full.jpg`);
 
@@ -260,27 +312,39 @@ async function getFullImage(filePath) {
     return prevPath;
   } catch { /* not cached */ }
 
-  const sharpM = await getSharp();
-
-  // Try: sharp might handle some RAW formats via libvips
-  try {
-    await sharpM(filePath)
-      .jpeg({ quality: 92 })
-      .toFile(prevPath);
-    return prevPath;
-  } catch { /* sharp can't read this RAW */ }
-
-  // Fallback: extract embedded thumbnail (may be small)
+  // Step 1: Extract the largest embedded JPEG preview via exifr
   const lib = await getExifr();
   try {
     const thumbBuf = await lib.thumbnail(filePath);
     if (thumbBuf) {
-      await fs.promises.writeFile(prevPath, thumbBuf);
+      // Resize with sharp to ensure consistent quality and save as JPEG
+      const sharpM = await getSharp();
+      try {
+        await sharpM(thumbBuf)
+          .jpeg({ quality: 92 })
+          .toFile(prevPath);
+        return prevPath;
+      } catch {
+        // If sharp can't process the buffer, save it directly
+        await fs.promises.writeFile(prevPath, thumbBuf);
+        return prevPath;
+      }
+    }
+  } catch { /* no embedded thumbnail found */ }
+
+  // Step 2: Fallback — try sharp directly (may work for DNG, some NEF with libraw support)
+  try {
+    const sharpM = await getSharp();
+    const meta = await sharpM(filePath).metadata();
+    if (meta && meta.width) {
+      await sharpM(filePath)
+        .jpeg({ quality: 92 })
+        .toFile(prevPath);
       return prevPath;
     }
-  } catch { /* no thumbnail */ }
+  } catch { /* sharp can't read this RAW */ }
 
-  return filePath; // last resort
+  return filePath; // last resort (browser will show broken image, but file path is returned)
 }
 
 /* ═══════════════════════════════════════════════════════

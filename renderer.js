@@ -710,6 +710,17 @@ async function commitNewCollection() {
 
 async function deleteCollection(colId, e) {
   e.stopPropagation();
+
+  const col = state.collections.find(c => c.id === colId);
+  const colName = col?.name || 'this collection';
+
+  const confirmed = await showConfirm(
+    'Delete collection?',
+    `"${colName}" and its contents will be permanently deleted. The original photo files will not be affected.`,
+    'Delete'
+  );
+  if (!confirmed) return;
+
   await api.deleteCollection(colId);
   state.collections = state.collections.filter(c => c.id !== colId);
 
@@ -1097,47 +1108,217 @@ function closeMetaPanel() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   FULLSCREEN VIEWER
+   FULLSCREEN VIEWER  —  Smooth Morph / Zoom + Slide
    ═══════════════════════════════════════════════════════ */
+
+/**
+ * Compute the CSS transform from a source DOM rect to a target rect.
+ * Used to morph the overlay from the card position to fullscreen (and back).
+ */
+function morphTransform(fromRect, toRect) {
+  const scaleX = toRect.width  === 0 ? 1 : fromRect.width  / toRect.width;
+  const scaleY = toRect.height === 0 ? 1 : fromRect.height / toRect.height;
+  const tx = fromRect.left - toRect.left;
+  const ty = fromRect.top  - toRect.top;
+  return `translate(${tx}px, ${ty}px) scale(${scaleX}, ${scaleY})`;
+}
+
+/** Store the card rect at open time for reverse morph on close. */
+let _fsCardRect = null;
 
 async function openFullscreen(index) {
   state.fullscreenIdx = index;
   const photo = state.fullscreenList[index];
   if (!photo) return;
 
-  dom.fsOverlay.style.display = 'flex';
-  // Force reflow for transition
-  requestAnimationFrame(() => {
-    dom.fsOverlay.classList.add('visible');
-  });
+  // ── 1. Capture card bounding rect for the morph ──
+  const card = dom.photoGrid.querySelector(`[data-index="${index}"]`);
+  const cardRect = card ? card.getBoundingClientRect() : null;
 
+  // Reset image container slide classes
+  const imgContainer = document.querySelector('.fs-image-container');
+  imgContainer.classList.remove(
+    'slide-out-left', 'slide-in-right',
+    'slide-out-right', 'slide-in-left'
+  );
+
+  // ── 2. Show overlay invisible, set its final position ──
+  dom.fsOverlay.style.display = 'flex';
+  dom.fsOverlay.style.transition = 'none';
+  dom.fsOverlay.style.transform = 'none';
+  dom.fsOverlay.style.opacity = '1';
+  dom.fsOverlay.style.visibility = 'visible';
+  dom.fsOverlay.style.pointerEvents = 'all';
+
+  // Let layout settle
+  dom.fsOverlay.getBoundingClientRect();
+
+  // ── 3. Set initial morph transform (scale from card) ──
+  if (cardRect) {
+    const overlayRect = dom.fsOverlay.getBoundingClientRect();
+    const startTransform = morphTransform(cardRect, overlayRect);
+    dom.fsOverlay.style.transform = startTransform;
+    dom.fsOverlay.style.opacity = '0';
+    dom.fsOverlay.style.borderRadius = '12px';
+    // Prepare for animation
+    requestAnimationFrame(() => {
+      dom.fsOverlay.style.transition = '';
+      dom.fsOverlay.style.opacity = '1';
+      dom.fsOverlay.style.transform = 'none';
+      dom.fsOverlay.style.borderRadius = '0';
+    });
+  } else {
+    // Fallback: simple fade
+    dom.fsOverlay.style.transition = 'opacity 0.25s ease, visibility 0s';
+    dom.fsOverlay.style.visibility = 'visible';
+    dom.fsOverlay.style.pointerEvents = 'all';
+    dom.fsOverlay.style.opacity = '1';
+    dom.fsOverlay.classList.add('visible');
+  }
+
+  // Store card rect for reverse morph on close
+  _fsCardRect = cardRect;
+
+  // ── 4. Update labels ──
   dom.fsFilename.textContent = photo.name;
   dom.fsCounter.textContent  = `${index + 1} / ${state.fullscreenList.length}`;
 
-  // Load image
+  // ── 5. Load image ──
   dom.fsImage.src = '';
+  dom.fsImage.classList.remove('loaded');
   try {
     const imgPath = await api.getFullImage(photo.path);
-    dom.fsImage.src = `file://${imgPath}`;
+    const rawExts = state.rawExtensions;
+    const isStillRaw = rawExts.some(ext => imgPath.toLowerCase().endsWith(ext));
+    if (isStillRaw) {
+      dom.fsImage.src = '';
+      dom.fsImage.alt = `RAW file — preview unavailable (${photo.ext.toUpperCase()})`;
+      imgContainer.classList.add('raw-unavailable');
+    } else {
+      dom.fsImage.src = `file://${imgPath}`;
+      imgContainer.classList.remove('raw-unavailable');
+      // Fade-in image via 'loaded' class
+      dom.fsImage.onload = () => {
+        dom.fsImage.classList.add('loaded');
+      };
+    }
   } catch {
-    // Try direct file path
     dom.fsImage.src = `file://${photo.path}`;
+    imgContainer.classList.remove('raw-unavailable');
+    dom.fsImage.onload = () => {
+      dom.fsImage.classList.add('loaded');
+    };
   }
 }
 
 function closeFullscreen() {
-  dom.fsOverlay.classList.remove('visible');
-  setTimeout(() => {
-    dom.fsOverlay.style.display = 'none';
-    dom.fsImage.src = '';
-  }, 250);
+  if (_fsCardRect && dom.fsOverlay.style.visibility !== 'hidden') {
+    // ── Reverse morph: zoom back to card ──
+    const overlayRect = dom.fsOverlay.getBoundingClientRect();
+    const endTransform = morphTransform(_fsCardRect, overlayRect);
+
+    dom.fsOverlay.style.transition = '';
+    dom.fsOverlay.style.borderRadius = '12px';
+    dom.fsOverlay.style.transform = endTransform;
+    dom.fsOverlay.style.opacity = '0';
+    dom.fsOverlay.style.visibility = 'hidden';
+    dom.fsOverlay.style.pointerEvents = 'none';
+
+    setTimeout(() => {
+      dom.fsOverlay.style.display = 'none';
+      dom.fsOverlay.style.transform = 'none';
+      dom.fsImage.src = '';
+      dom.fsImage.classList.remove('loaded');
+      _fsCardRect = null;
+    }, 400);
+  } else {
+    // Fallback: simple fade
+    dom.fsOverlay.classList.remove('visible');
+    setTimeout(() => {
+      dom.fsOverlay.style.display = 'none';
+      dom.fsImage.src = '';
+      dom.fsImage.classList.remove('loaded');
+    }, 250);
+  }
+
   state.fullscreenIdx = -1;
+  dom.fsOverlay.classList.remove('visible');
 }
 
 async function navigateFullscreen(dir) {
   const newIdx = state.fullscreenIdx + dir;
   if (newIdx < 0 || newIdx >= state.fullscreenList.length) return;
-  await openFullscreen(newIdx);
+
+  const imgContainer = document.querySelector('.fs-image-container');
+  const currentImage = dom.fsImage;
+  const currentSrc = currentImage.src;
+
+  const slideOutClass = dir < 0 ? 'slide-out-left' : 'slide-out-right';
+  const slideInClass  = dir < 0 ? 'slide-in-right' : 'slide-in-left';
+
+  // ── 1. Animate current image out ──
+  // Temporarily set the current src so slide-out plays on the visible image
+  imgContainer.classList.remove('slide-out-left', 'slide-in-right', 'slide-out-right', 'slide-in-left');
+  // Force reflow
+  void imgContainer.offsetWidth;
+  imgContainer.classList.add(slideOutClass);
+
+  // ── 2. After slide-out completes, load new image ──
+  setTimeout(async () => {
+    state.fullscreenIdx = newIdx;
+    const photo = state.fullscreenList[newIdx];
+    if (!photo) return;
+
+    dom.fsFilename.textContent = photo.name;
+    dom.fsCounter.textContent  = `${newIdx + 1} / ${state.fullscreenList.length}`;
+
+    // Reset container for slide-in
+    imgContainer.classList.remove(slideOutClass, slideInClass);
+    dom.fsImage.src = '';
+    dom.fsImage.classList.remove('loaded');
+
+    // Set raw-unavailable if needed
+    const rawExts = state.rawExtensions;
+    const isRaw = rawExts.some(ext => photo.ext?.toLowerCase() === ext);
+    if (isRaw) {
+      imgContainer.classList.add('raw-unavailable');
+      dom.fsImage.alt = `RAW file — preview unavailable (${photo.ext.toUpperCase()})`;
+    } else {
+      imgContainer.classList.remove('raw-unavailable');
+    }
+
+    // Load new image
+    try {
+      const imgPath = await api.getFullImage(photo.path);
+      if (!rawExts.some(ext => imgPath.toLowerCase().endsWith(ext))) {
+        dom.fsImage.src = `file://${imgPath}`;
+        dom.fsImage.onload = () => {
+          dom.fsImage.classList.add('loaded');
+          // ── 3. Animate new image in ──
+          imgContainer.classList.remove(slideOutClass, slideInClass);
+          void imgContainer.offsetWidth;
+          imgContainer.classList.add(slideInClass);
+          // Remove class after animation
+          setTimeout(() => {
+            imgContainer.classList.remove(slideInClass);
+          }, 300);
+        };
+      } else {
+        dom.fsImage.onload = null;
+      }
+    } catch {
+      dom.fsImage.src = `file://${photo.path}`;
+      dom.fsImage.onload = () => {
+        dom.fsImage.classList.add('loaded');
+        imgContainer.classList.remove(slideOutClass, slideInClass);
+        void imgContainer.offsetWidth;
+        imgContainer.classList.add(slideInClass);
+        setTimeout(() => {
+          imgContainer.classList.remove(slideInClass);
+        }, 300);
+      };
+    }
+  }, 260); // match slide-out duration
 }
 
 /* ═══════════════════════════════════════════════════════
