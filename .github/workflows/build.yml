@@ -17,13 +17,15 @@ jobs:
         with:
           fetch-depth: 0
       - name: Create draft release
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          export REPO="${{ github.repository }}"
-          export TAG="${{ github.ref_name }}"
-          export PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
-          export CHANGELOG=$(git log "$PREV_TAG..$TAG" --pretty=format:"* %s")
-          export GH_TOKEN="${{ secrets.GITHUB_TOKEN }}"
-          export MODE="create"
+          PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
+          CHANGELOG=$(git log "$PREV_TAG..$TAG" --pretty=format:"* %s" | sed '/^$/d')
+          export REPO TAG GH_TOKEN PREV_TAG CHANGELOG
+          export MODE=create
           python3 build/release.py
 
   build:
@@ -48,9 +50,9 @@ jobs:
         run: swiftc build/haptic.swift -o build/haptic
       - name: Build & Publish
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npx electron-builder ${{ matrix.build_args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.build_args }} --publish always
 
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -61,11 +63,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: Publish release
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          export REPO="${{ github.repository }}"
-          export TAG="${{ github.ref_name }}"
-          export PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
-          export CHANGELOG=$(git log "$PREV_TAG..$TAG" --pretty=format:"* %s")
-          export GH_TOKEN="${{ secrets.GITHUB_TOKEN }}"
-          export MODE="publish"
+          PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
+          CHANGELOG=$(git log "$PREV_TAG..$TAG" --pretty=format:"* %s" | sed '/^$/d')
+          export REPO TAG GH_TOKEN PREV_TAG CHANGELOG
+          export MODE=publish
           python3 build/release.py

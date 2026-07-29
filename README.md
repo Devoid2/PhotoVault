@@ -46,27 +46,16 @@
 - **Right-click menu** — quickly add any photo to a collection
 - **Thumbnail caching** — WebP thumbnails via Sharp for instant browsing
 - **RAW support** — CR2, CR3 (embedded preview extraction)
-- **Multi-device sync** — use Google Drive or iCloud to access your library from any machine
 
 ## Supported Formats
 
-| Format | Type |
-|--------|------|
-| JPEG | Standard |
-| PNG | Standard |
-| CR2 | Canon RAW |
-| CR3 | Canon RAW |
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Framework | Electron 33 |
-| EXIF parsing | exifr |
-| Thumbnails | Sharp (libvips) |
-| Packaging | electron-builder |
-| UI | Vanilla HTML / CSS / JS |
-| Design | Dark monochrome, Inter font |
+| Format | Type | Thumbnail / Preview |
+|--------|------|---------------------|
+| JPEG | Standard | Native browser display |
+| PNG | Standard | Native browser display |
+| HEIC / HEIF | iPhone / High Efficiency | Sharp (libvips + libheif) → heic-convert fallback |
+| CR2 | Canon RAW | Embedded JPEG preview (exifr) |
+| CR3 | Canon RAW | Embedded JPEG preview (exifr) |
 
 ## License
 

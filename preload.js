@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getAppVersion:        ()   => ipcRenderer.invoke('app:getVersion'),
   getRawExtensions:     ()   => ipcRenderer.invoke('app:getRawExtensions'),
+  getHeifExtensions:    ()   => ipcRenderer.invoke('app:getHeifExtensions'),
 
   /* ── File watcher events ──────────────────────────────── */
   onPhotosAdded:   (cb) => ipcRenderer.on('photos:added',   (_e, photos) => cb(photos)),

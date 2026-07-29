@@ -10,9 +10,10 @@ const db       = require('./database');
    ═══════════════════════════════════════════════════════ */
 
 const SUPPORTED_EXTENSIONS = new Set([
-  '.jpg', '.jpeg', '.png', '.cr2', '.cr3',
+  '.jpg', '.jpeg', '.png', '.cr2', '.cr3', '.heic', '.heif',
 ]);
 const RAW_EXTENSIONS = new Set(['.cr2', '.cr3']);
+const HEIF_EXTENSIONS = new Set(['.heic', '.heif']);
 
 let THUMBNAIL_DIR;
 
@@ -164,6 +165,9 @@ async function generateThumbnail(filePath, size = 480) {
     } catch {
       input = filePath;
     }
+  } else if (HEIF_EXTENSIONS.has(ext)) {
+    // HEIC/HEIF — try sharp first (libvips with libheif), fallback to heic-convert
+    input = filePath;
   } else {
     input = filePath;
   }
@@ -175,6 +179,27 @@ async function generateThumbnail(filePath, size = 480) {
       .toFile(thumbPath);
     return thumbPath;
   } catch (err) {
+    // If sharp failed and it's a HEIF file, try heic-convert fallback
+    if (HEIF_EXTENSIONS.has(ext)) {
+      try {
+        const heicConvert = require('heic-convert');
+        const inputBuf = await fs.promises.readFile(filePath);
+        const outputBuf = await heicConvert({
+          buffer: inputBuf,
+          format: 'JPEG',
+          quality: 0.8,
+        });
+        input = outputBuf;
+        await sharpM(input)
+          .resize(size, size, { fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toFile(thumbPath);
+        return thumbPath;
+      } catch (heicErr) {
+        console.error(`Thumbnail HEIC fallback failed for ${filePath}:`, heicErr.message);
+        return null;
+      }
+    }
     console.error(`Thumbnail failed for ${filePath}:`, err.message);
     return null;
   }
@@ -183,6 +208,44 @@ async function generateThumbnail(filePath, size = 480) {
 /** For fullscreen viewer – get the best available image */
 async function getFullImage(filePath) {
   const ext = path.extname(filePath).toLowerCase();
+
+  // HEIC/HEIF — need to convert to JPEG since the browser can't display them
+  if (HEIF_EXTENSIONS.has(ext)) {
+    const hash     = thumbHash(filePath);
+    const prevPath = path.join(THUMBNAIL_DIR, `${hash}_full.jpg`);
+
+    try {
+      await fs.promises.access(prevPath);
+      return prevPath;
+    } catch { /* not cached */ }
+
+    const sharpM = await getSharp();
+
+    // Try sharp first (libvips with libheif)
+    try {
+      await sharpM(filePath)
+        .jpeg({ quality: 92 })
+        .toFile(prevPath);
+      return prevPath;
+    } catch { /* sharp can't read this HEIC */ }
+
+    // Fallback: heic-convert
+    try {
+      const heicConvert = require('heic-convert');
+      const inputBuf = await fs.promises.readFile(filePath);
+      const outputBuf = await heicConvert({
+        buffer: inputBuf,
+        format: 'JPEG',
+        quality: 0.92,
+      });
+      await fs.promises.writeFile(prevPath, outputBuf);
+      return prevPath;
+    } catch (heicErr) {
+      console.error(`Full HEIC fallback failed for ${filePath}:`, heicErr.message);
+    }
+
+    return filePath; // last resort (browser may show nothing)
+  }
 
   if (!RAW_EXTENSIONS.has(ext)) {
     return filePath; // browser can display JPEG/PNG directly
@@ -549,6 +612,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('app:getRawExtensions', () => {
     return [...RAW_EXTENSIONS];
+  });
+
+  ipcMain.handle('app:getHeifExtensions', () => {
+    return [...HEIF_EXTENSIONS];
   });
 
   /* ── Photo retrieval ───────────────────────────────── */
