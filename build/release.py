@@ -20,9 +20,10 @@ body = (
 )
 
 headers = {
-    "Authorization": f"token {token}",
-    "Accept": "application/vnd.github.v3+json",
+    "Authorization": f"Bearer {token}",
+    "Accept": "application/vnd.github+json",
     "Content-Type": "application/json",
+    "X-GitHub-Api-Version": "2022-11-28",
 }
 
 mode = os.environ.get('MODE', 'create')
@@ -32,10 +33,15 @@ def request_json(url, method='GET', data=None):
     req = urllib.request.Request(url, method=method, data=data, headers=headers)
     try:
         with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read().decode('utf-8'))
+            body = resp.read().decode('utf-8')
+            if not body:
+                return {}
+            return json.loads(body)
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return None
+        body = e.read().decode('utf-8', 'replace')
+        print(f"GitHub API error {e.code}: {body}")
         raise
 
 
