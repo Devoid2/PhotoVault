@@ -9,7 +9,24 @@ permissions:
   contents: write
 
 jobs:
+  # ── Create a draft release BEFORE builds (so electron-builder can upload assets) ──
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: false
+          name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Build per platform ──
   build:
+    needs: [create-release]
+    if: always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -59,57 +76,47 @@ jobs:
             dist/*.exe
           if-no-files-found: ignore
 
-  # ── Create & publish release (after all builds are done) ──
-  release:
+  # ── Update release notes & publish (after all builds succeed) ──
+  publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout with full history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Generate release notes
+      - name: Build changelog
+        id: changelog
         run: |
           PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
-          echo "## What's Changed" > /tmp/release-notes.md
-          echo "" >> /tmp/release-notes.md
-          git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* [%s](https://github.com/Devoid2/PhotoVault/commit/%H)" >> /tmp/release-notes.md
-          echo "" >> /tmp/release-notes.md
+          CHANGELOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"* %s")
+          {
+            echo 'changelog<<EOF'
+            echo "## What's Changed"
+            echo ""
+            echo "$CHANGELOG"
+            echo ""
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ github.ref_name }}"
+            echo ""
+            echo "### Downloads"
+            echo "- [macOS (DMG)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PhotoVault-${{ github.ref_name }}-universal.dmg)"
+            echo "- [Windows (Setup)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PhotoVault-Setup-${{ github.ref_name }}.exe)"
+            EOF
+          } >> $GITHUB_OUTPUT
 
-      - name: Get release ID
-        id: get_release
+      - name: Update release notes & publish
         run: |
-          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
-            > /tmp/release.json
-          echo "id=$(python3 -c "import json; d=json.load(open('/tmp/release.json')); print(d.get('id', ''))")" >> $GITHUB_OUTPUT
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-      - name: Create release if not exists
-        if: steps.get_release.outputs.id == ''
-        run: |
-          cat /tmp/release-notes.md
-          curl -s -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/releases" \
-            -d '{
-              "tag_name": "${{ github.ref_name }}",
-              "name": "${{ github.ref_name }}",
-              "body": '"$(python3 -c "import json; print(json.dumps(open('/tmp/release-notes.md').read()))")"',
-              "draft": false,
-              "prerelease": false
-            }'
+          # Escape the changelog for JSON
+          BODY=$(python3 -c "import json; print(json.dumps('''${{ steps.changelog.outputs.changelog }}'''))")
 
-      - name: Update release notes if exists
-        if: steps.get_release.outputs.id != ''
-        run: |
           curl -s -X PATCH \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/${{ steps.get_release.outputs.id }}" \
-            -d '{
-              "body": '"$(python3 -c "import json; print(json.dumps(open('/tmp/release-notes.md').read()))")"',
-              "draft": false
-            }'
+            "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" \
+            -d '{"body": '"$BODY"', "draft": false}'
